@@ -15,3 +15,10 @@ def test_config_overrides_prompt_without_code_change():
     cfg=load_personality()
     cfg["humor"]="Umorismo personalizzato di test"
     assert "Umorismo personalizzato di test" in build_system_prompt(cfg)
+
+def test_personality_guards_against_invented_user_details():
+    prompt = build_system_prompt()
+    assert "Non attribuire MAI nome" in prompt
+    assert "NON significa che all'utente piacciano" in prompt
+    assert "Se l'utente corregge" in prompt
+    assert "smetti di proporli" in prompt
