@@ -29,3 +29,12 @@ def test_clean_answer_rejects_reasoning():
             assert False, "reasoning exposed"
         except RuntimeError:
             pass
+
+def test_extract_structured_final_reply():
+    from robi.brain import extract_reply
+    assert extract_reply({"message":{"content":'{"reply":"Ciao, sono ROBI!"}'}}) == "Ciao, sono ROBI!"
+    try:
+        extract_reply({"message":{"content":'{"reply":"Okay, the user said hello."}'}})
+        assert False
+    except RuntimeError:
+        pass
