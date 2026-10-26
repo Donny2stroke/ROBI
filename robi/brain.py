@@ -4,7 +4,7 @@ import threading
 from urllib.request import Request, urlopen
 from urllib.error import URLError, HTTPError
 
-SYSTEM_PROMPT = ("Rispondi direttamente senza descrivere ragionamenti o istruzioni. /no_think\n" 
+SYSTEM_PROMPT = ("Rispondi con un oggetto JSON che contenga solo la chiave reply, con la risposta finale da mostrare a voce. Non inserire spiegazioni del ragionamento. " 
                  "Sei ROBI, un piccolo robot da scrivania. Parli italiano in modo naturale, "
                  "caldo e conciso. Non fingere di aver visto o sentito cose non disponibili "
                  "nei messaggi. Se non sei sicuro, dillo. Evita di attribuire emozioni "
@@ -19,6 +19,18 @@ def clean_answer(content: str) -> str:
                                  "i need to respond", "first, i should"))):
         raise RuntimeError("ROBI ha prodotto ragionamento invece della risposta finale. Riprova.")
     return value
+
+
+def extract_reply(data):
+    """Parse structured, user-facing output; never return model analysis."""
+    content = data.get("message", {}).get("content", "")
+    try:
+        obj = json.loads(content)
+    except (ValueError, TypeError):
+        return clean_answer(content)
+    if not isinstance(obj, dict) or not isinstance(obj.get("reply"), str):
+        raise RuntimeError("Formato risposta AI non valido.")
+    return clean_answer(obj["reply"])
 
 
 class Conversation:
@@ -41,7 +53,8 @@ class Conversation:
             user={"role":"user","content":message.strip()}
             payload={"model":self.model,"stream":False,"think":False,
                      "messages":[{"role":"system","content":SYSTEM_PROMPT}]+self._history[-16:]+[user],
-                     "options":{"num_ctx":4096,"num_predict":220}}
+                     "options":{"num_ctx":4096,"num_predict":350},
+                     "format":{"type":"object","properties":{"reply":{"type":"string"}},"required":["reply"],"additionalProperties":False}}
             request=Request(self.endpoint,data=json.dumps(payload).encode("utf-8"),
                             headers={"Content-Type":"application/json"},method="POST")
             try:
@@ -49,7 +62,7 @@ class Conversation:
                     data=json.load(response)
             except (URLError, HTTPError, TimeoutError, OSError) as exc:
                 raise RuntimeError("Ollama non disponibile: verifica che sia avviato e che qwen3:4b sia installato.") from exc
-            answer=clean_answer(data.get("message",{}).get("content",""))
+            answer=extract_reply(data)
             if not answer:
                 raise RuntimeError("Ollama ha restituito una risposta vuota.")
             self._history.extend([user,{"role":"assistant","content":answer}])
