@@ -47,6 +47,7 @@ class ExpressionWorker:
         self._result = None
         self._error = None
         self._latency_ms = 0.0
+        self._result_sequence = 0
         self._running = False
 
     def start(self):
@@ -71,7 +72,8 @@ class ExpressionWorker:
             age = None if not self._result else round(time.monotonic()-self._result["timestamp"], 1)
             return {"enabled": True, "running": self._running, "error": self._error,
                     "scores": None if not self._result or (age is not None and age > 2.0) else self._result["scores"],
-                    "age_s": age, "inference_ms": round(self._latency_ms, 1)}
+                    "age_s": age, "inference_ms": round(self._latency_ms, 1),
+                    "sequence": self._result_sequence}
 
     def stop(self):
         self._stop.set()
@@ -97,6 +99,7 @@ class ExpressionWorker:
                 scores=classifier.predict(frame)
                 finished=time.monotonic()
                 with self._lock:
+                    self._result_sequence += 1
                     self._result={"timestamp":finished,"scores":scores}
                     self._latency_ms=(finished-t0)*1000
                 next_at=finished+self._period
