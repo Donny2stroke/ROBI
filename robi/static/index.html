@@ -52,7 +52,7 @@ function renderPerception(ai){
  const [top,score]=ranking[0],difference=score-(ranking[1]?.[1]??0);
  const next=score>=45&&difference>=12?top:'uncertain';
  // Conta risultati distinti, non i ripetuti polling sullo stesso risultato del modello.
- const resultKey=String(ai.age_s)+'|'+ranking.map(([k,v])=>k+':'+Number(v).toFixed(2)).join(',');
+ const resultKey=ranking.map(([k,v])=>k+':'+Number(v).toFixed(3)).join(',');
  if(resultKey!==lastResultKey){
    lastResultKey=resultKey;
    if(next!==proposedLabel){proposedLabel=next;repeatCount=1;}else repeatCount++;
