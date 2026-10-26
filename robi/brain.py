@@ -4,10 +4,23 @@ import threading
 from urllib.request import Request, urlopen
 from urllib.error import URLError, HTTPError
 
-SYSTEM_PROMPT = ("Sei ROBI, un piccolo robot da scrivania. Parli italiano in modo naturale, "
+SYSTEM_PROMPT = ("Rispondi direttamente senza descrivere ragionamenti o istruzioni. /no_think\n" 
+                 "Sei ROBI, un piccolo robot da scrivania. Parli italiano in modo naturale, "
                  "caldo e conciso. Non fingere di aver visto o sentito cose non disponibili "
                  "nei messaggi. Se non sei sicuro, dillo. Evita di attribuire emozioni "
                  "alle persone sulla base di espressioni facciali.")
+def clean_answer(content: str) -> str:
+    """Non pubblicare testo deliberativo invece della risposta finale."""
+    import re
+    value = re.sub(r"<think>[\\s\\S]*?</think>", "", content, flags=re.IGNORECASE).strip()
+    lower = value.casefold()
+    if (not value or "<think>" in lower or "thinking..." in lower
+            or lower.startswith(("okay, the user", "the user said", "let me think",
+                                 "i need to respond", "first, i should"))):
+        raise RuntimeError("ROBI ha prodotto ragionamento invece della risposta finale. Riprova.")
+    return value
+
+
 class Conversation:
     def __init__(self, model="qwen3:4b", endpoint="http://127.0.0.1:11434/api/chat"):
         self.model, self.endpoint = model, endpoint
@@ -36,7 +49,7 @@ class Conversation:
                     data=json.load(response)
             except (URLError, HTTPError, TimeoutError, OSError) as exc:
                 raise RuntimeError("Ollama non disponibile: verifica che sia avviato e che qwen3:4b sia installato.") from exc
-            answer=data.get("message",{}).get("content","").strip()
+            answer=clean_answer(data.get("message",{}).get("content",""))
             if not answer:
                 raise RuntimeError("Ollama ha restituito una risposta vuota.")
             self._history.extend([user,{"role":"assistant","content":answer}])
