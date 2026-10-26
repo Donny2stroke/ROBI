@@ -38,3 +38,33 @@ def test_extract_structured_final_reply():
         assert False
     except RuntimeError:
         pass
+
+def test_followup_includes_user_facts_in_model_context():
+    """Il backend deve ricevere il turno precedente e la domanda corrente."""
+    import io
+    import json
+    from unittest.mock import patch
+    from robi.brain import Conversation
+
+    class FakeResponse:
+        def __init__(self, answer):
+            self.data = io.BytesIO(json.dumps({"message":{"content":json.dumps({"reply":answer})}}).encode())
+        def __enter__(self): return self.data
+        def __exit__(self, *_): return False
+
+    sent = []
+    def fake_urlopen(request, timeout):
+        payload = json.loads(request.data)
+        sent.append(payload)
+        return FakeResponse("Risposta di prova")
+
+    c = Conversation()
+    with patch("robi.brain.urlopen", side_effect=fake_urlopen):
+        c.reply("Mi chiamo Marco e mi piace la pizza")
+        c.reply("Chi sono e cosa mi piace?")
+
+    messages = sent[-1]["messages"]
+    assert [m["role"] for m in messages] == ["system", "user", "assistant", "user"]
+    assert messages[1]["content"] == "Mi chiamo Marco e mi piace la pizza"
+    assert messages[-1]["content"] == "Chi sono e cosa mi piace?"
+    assert "TU sei ROBI" in messages[0]["content"]
