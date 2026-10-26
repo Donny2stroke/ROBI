@@ -9,6 +9,7 @@ import time
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from urllib.parse import urlsplit
 from .camera import CameraService
+from .brain import Conversation
 
 STATIC = Path(__file__).parent / 'static'
 ALLOWED_STATES = {'idle','listening','thinking','speaking','curious','happy','sleepy'}
@@ -55,6 +56,7 @@ class Core:
         return self.snapshot()
 
 core = Core()
+chat = Conversation()
 
 class Handler(BaseHTTPRequestHandler):
     def reply(self, code, body, content_type='application/json; charset=utf-8'):
@@ -94,6 +96,8 @@ class Handler(BaseHTTPRequestHandler):
         path = urlsplit(self.path).path
         if path == '/api/camera/stream.mjpg':
             return self.mjpeg_stream()
+        if path == '/api/chat/history':
+            return self.json_reply(200, {'messages': chat.history()})
         if path == '/api/status':
             return self.json_reply(200,core.snapshot())
         if path == '/api/camera/frame.jpg':
@@ -110,7 +114,7 @@ class Handler(BaseHTTPRequestHandler):
 
     def do_POST(self):
         path = urlsplit(self.path).path
-        if path not in ('/api/eyes','/api/camera/start','/api/camera/stop','/api/camera/config'):
+        if path not in ('/api/eyes','/api/camera/start','/api/camera/stop','/api/camera/config','/api/chat','/api/chat/clear'):
             return self.json_reply(404, {'error':'Risorsa non trovata.'})
         try:
             length = int(self.headers.get('Content-Length','0'))
@@ -118,7 +122,12 @@ class Handler(BaseHTTPRequestHandler):
                 return self.json_reply(413,{'error':'Richiesta troppo grande.'})
             raw = self.rfile.read(length)
             data = json.loads(raw) if raw else {}
-            if path == '/api/eyes':
+            if path == '/api/chat':
+                out = chat.reply(data.get('message'))
+            elif path == '/api/chat/clear':
+                chat.clear()
+                out = {'messages': []}
+            elif path == '/api/eyes':
                 out = core.command(data)
             elif path == '/api/camera/config':
                 out = core.camera.configure(data['sensitivity'])
@@ -127,6 +136,8 @@ class Handler(BaseHTTPRequestHandler):
             else:
                 out = core.camera.stop()
             return self.json_reply(200,out)
+        except RuntimeError as exc:
+            return self.json_reply(503, {'error':str(exc)})
         except (ValueError, KeyError, TypeError, json.JSONDecodeError) as exc:
             return self.json_reply(400,{'error':str(exc)})
 
