@@ -19,3 +19,13 @@ def test_history_can_be_cleared():
 
 def test_model_default():
     assert Conversation().model=="qwen3:4b"
+
+def test_clean_answer_rejects_reasoning():
+    from robi.brain import clean_answer
+    assert clean_answer("<think>Draft</think>Ciao!") == "Ciao!"
+    for text in ("Okay, the user said hello.", "Thinking... draft"):
+        try:
+            clean_answer(text)
+            assert False, "reasoning exposed"
+        except RuntimeError:
+            pass
