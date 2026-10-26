@@ -30,6 +30,16 @@ def extract_reply(data):
     return clean_answer(obj["reply"])
 
 
+def user_facts_context(history):
+    """Riporta messaggi dell'utente, non inferenze dell'assistente."""
+    statements = [m['content'] for m in history if m.get('role') == 'user' and isinstance(m.get('content'), str)]
+    if not statements:
+        return ''
+    return ('PROMEMORIA: solo affermazioni scritte dall\'utente; domande e ipotesi non confermano fatti. '
+            'Se un dettaglio viene corretto, prevale l\'ultima affermazione esplicita. '
+            'Non attribuire all\'utente idee proposte da ROBI.\n' +
+            '\\n'.join('- ' + json.dumps(text, ensure_ascii=False) for text in statements[-8:]))
+
 class Conversation:
     def __init__(self, model="qwen3:4b", endpoint="http://127.0.0.1:11434/api/chat"):
         self.model, self.endpoint = model, endpoint
@@ -49,7 +59,7 @@ class Conversation:
         try:
             user={"role":"user","content":message.strip()}
             payload={"model":self.model,"stream":False,"think":False,
-                     "messages":[{"role":"system","content":build_system_prompt()}]+self._history[-16:]+[user],
+                     "messages":[{"role":"system","content":build_system_prompt()}, {"role":"system","content":user_facts_context(self._history)}]+self._history[-16:]+[user],
                      "options":{"num_ctx":4096,"num_predict":350},
                      "format":{"type":"object","properties":{"reply":{"type":"string"}},"required":["reply"],"additionalProperties":False}}
             request=Request(self.endpoint,data=json.dumps(payload).encode("utf-8"),
