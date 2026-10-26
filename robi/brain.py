@@ -4,17 +4,8 @@ import threading
 from urllib.request import Request, urlopen
 from urllib.error import URLError, HTTPError
 
-SYSTEM_PROMPT = ("Rispondi con un oggetto JSON che contenga solo la chiave reply, con la risposta finale da mostrare a voce. Non inserire spiegazioni del ragionamento. " 
-                 "Sei ROBI, un piccolo robot da scrivania. Parli italiano in modo naturale, "
-                 "caldo e conciso. Non fingere di aver visto o sentito cose non disponibili "
-                 "nei messaggi. Se non sei sicuro, dillo. Evita di attribuire emozioni "
-                 "alle persone sulla base di espressioni facciali. "
-                 "Nella chat, TU sei ROBI e la persona che scrive e' l'utente: quando "
-                 "l'utente domanda chi e' o cosa gli piace, riferisciti a informazioni "
-                 "che LUI ha comunicato nei messaggi precedenti. Non confondere "
-                 "la tua identita' con la sua. Non inventare ricordi: se non hai "
-                 "l'informazione, chiedila. La cronologia in messages e' il contesto "
-                 "della conversazione corrente.")
+from .personality import build_system_prompt
+
 def clean_answer(content: str) -> str:
     """Non pubblicare testo deliberativo invece della risposta finale."""
     import re
@@ -58,7 +49,7 @@ class Conversation:
         try:
             user={"role":"user","content":message.strip()}
             payload={"model":self.model,"stream":False,"think":False,
-                     "messages":[{"role":"system","content":SYSTEM_PROMPT}]+self._history[-16:]+[user],
+                     "messages":[{"role":"system","content":build_system_prompt()}]+self._history[-16:]+[user],
                      "options":{"num_ctx":4096,"num_predict":350},
                      "format":{"type":"object","properties":{"reply":{"type":"string"}},"required":["reply"],"additionalProperties":False}}
             request=Request(self.endpoint,data=json.dumps(payload).encode("utf-8"),
