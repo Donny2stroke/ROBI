@@ -28,7 +28,7 @@ class Core:
         camera = self.camera.status()
         with self.lock:
             x, y = (camera['gaze_x'], camera['gaze_y']) if self.camera_tracking and camera['active'] else (self.gaze_x,self.gaze_y)
-            return {'version':'0.3.0','state':self.state,'gaze_x':x,'gaze_y':y,
+            return {'version':'0.3.2','state':self.state,'gaze_x':x,'gaze_y':y,
                     'camera_tracking':self.camera_tracking,'blink_id':self.blink_id,
                     'camera':camera,'uptime_seconds':int(time.time()-self.started)}
 
@@ -66,7 +66,7 @@ class Handler(BaseHTTPRequestHandler):
         self.end_headers()
         try:
             self.wfile.write(body)
-        except (BrokenPipeError, ConnectionResetError):
+        except (BrokenPipeError, ConnectionResetError, ConnectionAbortedError):
             pass
 
     def json_reply(self, code, data):
@@ -140,7 +140,7 @@ def main():
     parser.add_argument('--port',type=int,default=8765)
     args = parser.parse_args()
     server = ThreadingHTTPServer(('127.0.0.1',args.port), Handler)
-    print(f'ROBI Core v0.3.0 | http://127.0.0.1:{args.port}',flush=True)
+    print(f'ROBI Core v0.3.2 | http://127.0.0.1:{args.port}',flush=True)
     print('Premi CTRL+C per fermare il server.',flush=True)
     try:
         server.serve_forever()
