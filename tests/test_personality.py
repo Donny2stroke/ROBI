@@ -22,3 +22,14 @@ def test_personality_guards_against_invented_user_details():
     assert "NON significa che all'utente piacciano" in prompt
     assert "Se l'utente corregge" in prompt
     assert "smetti di proporli" in prompt
+
+def test_user_context_only_contains_user_statements():
+    from robi.brain import user_facts_context
+    memory = user_facts_context([
+        {"role":"user","content":"Mi chiamo Alessandro e adoro Python"},
+        {"role":"assistant","content":"Ti piace Indovina chi"},
+        {"role":"user","content":"Non ho detto che mi piaccia giocare"},
+    ])
+    assert "Alessandro" in memory
+    assert "Indovina chi" not in memory
+    assert "Non ho detto" in memory
