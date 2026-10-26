@@ -64,7 +64,7 @@ def test_followup_includes_user_facts_in_model_context():
         c.reply("Chi sono e cosa mi piace?")
 
     messages = sent[-1]["messages"]
-    assert [m["role"] for m in messages] == ["system", "user", "assistant", "user"]
-    assert messages[1]["content"] == "Mi chiamo Marco e mi piace la pizza"
+    assert [m["role"] for m in messages] == ["system", "system", "user", "assistant", "user"]
+    assert messages[2]["content"] == "Mi chiamo Marco e mi piace la pizza"
     assert messages[-1]["content"] == "Chi sono e cosa mi piace?"
     assert "TU sei ROBI" in messages[0]["content"]
