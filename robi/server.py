@@ -10,6 +10,7 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from urllib.parse import urlsplit
 from .camera import CameraService
 from .brain import Conversation
+from .brain import Conversation
 
 STATIC = Path(__file__).parent / 'static'
 ALLOWED_STATES = {'idle','listening','thinking','speaking','curious','happy','sleepy'}
@@ -18,6 +19,7 @@ class Core:
     def __init__(self):
         self.lock = threading.RLock()
         self.camera = CameraService()
+        self.conversation = Conversation()
         self.state = 'idle'
         self.gaze_x = 0.0
         self.gaze_y = 0.0
@@ -29,7 +31,7 @@ class Core:
         camera = self.camera.status()
         with self.lock:
             x, y = (camera['gaze_x'], camera['gaze_y']) if self.camera_tracking and camera['active'] else (self.gaze_x,self.gaze_y)
-            return {'version':'0.3.2','state':self.state,'gaze_x':x,'gaze_y':y,
+            return {'version':'0.4.0','state':self.state,'gaze_x':x,'gaze_y':y,
                     'camera_tracking':self.camera_tracking,'blink_id':self.blink_id,
                     'camera':camera,'uptime_seconds':int(time.time()-self.started)}
 
@@ -98,6 +100,8 @@ class Handler(BaseHTTPRequestHandler):
             return self.mjpeg_stream()
         if path == '/api/chat/history':
             return self.json_reply(200, {'messages': chat.history()})
+        if path == '/api/chat/history':
+            return self.json_reply(200,{'messages':core.conversation.history()})
         if path == '/api/status':
             return self.json_reply(200,core.snapshot())
         if path == '/api/camera/frame.jpg':
@@ -127,6 +131,11 @@ class Handler(BaseHTTPRequestHandler):
             elif path == '/api/chat/clear':
                 chat.clear()
                 out = {'messages': []}
+            elif path == '/api/chat':
+                out = core.conversation.reply(data.get('message'))
+            elif path == '/api/chat/clear':
+                core.conversation.clear()
+                out = {'messages': []}
             elif path == '/api/eyes':
                 out = core.command(data)
             elif path == '/api/camera/config':
@@ -138,6 +147,8 @@ class Handler(BaseHTTPRequestHandler):
             return self.json_reply(200,out)
         except RuntimeError as exc:
             return self.json_reply(503, {'error':str(exc)})
+        except RuntimeError as exc:
+            return self.json_reply(503,{'error':str(exc)})
         except (ValueError, KeyError, TypeError, json.JSONDecodeError) as exc:
             return self.json_reply(400,{'error':str(exc)})
 
@@ -151,7 +162,7 @@ def main():
     parser.add_argument('--port',type=int,default=8765)
     args = parser.parse_args()
     server = ThreadingHTTPServer(('127.0.0.1',args.port), Handler)
-    print(f'ROBI Core v0.3.2 | http://127.0.0.1:{args.port}',flush=True)
+    print(f'ROBI Core v0.4.0 | http://127.0.0.1:{args.port}',flush=True)
     print('Premi CTRL+C per fermare il server.',flush=True)
     try:
         server.serve_forever()
