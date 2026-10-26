@@ -122,7 +122,7 @@ class Handler(BaseHTTPRequestHandler):
                 return self.json_reply(413,{'error':'Richiesta troppo grande.'})
             raw = self.rfile.read(length)
             data = json.loads(raw) if raw else {}
-                        elif path == '/api/chat':
+            if path == '/api/chat':
                 out = core.conversation.reply(data.get('message'))
             elif path == '/api/chat/clear':
                 core.conversation.clear()
