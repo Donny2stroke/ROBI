@@ -12,7 +12,7 @@ SYSTEM_PROMPT = ("Rispondi direttamente senza descrivere ragionamenti o istruzio
 def clean_answer(content: str) -> str:
     """Non pubblicare testo deliberativo invece della risposta finale."""
     import re
-    value = re.sub(r"<think>[\\s\\S]*?</think>", "", content, flags=re.IGNORECASE).strip()
+    value = re.sub(r"<think>.*?</think>", "", content, flags=re.IGNORECASE | re.DOTALL).strip()
     lower = value.casefold()
     if (not value or "<think>" in lower or "thinking..." in lower
             or lower.startswith(("okay, the user", "the user said", "let me think",
