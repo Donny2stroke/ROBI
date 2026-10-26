@@ -1,0 +1,112 @@
+<!doctype html><html lang="it"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>ROBI · Eye Studio v0.3</title><style>
+:root{font-family:system-ui,-apple-system,Segoe UI,sans-serif;color:#eaf2ff;background:#0c1424}*{box-sizing:border-box}body{margin:0}header{padding:24px 6vw;border-bottom:1px solid #26344a;display:flex;justify-content:space-between;align-items:center}header h1{margin:0;font-size:25px}small,.sub{color:#a7b8ce}main{max-width:1100px;margin:auto;padding:30px 20px;display:grid;grid-template-columns:minmax(300px,1.25fr) minmax(270px,1fr);gap:24px}.panel{background:#151f30;border:1px solid #2e3f56;border-radius:20px;padding:22px}.robot{display:flex;flex-direction:column;align-items:center;justify-content:center;min-height:360px}.head{position:relative;background:linear-gradient(150deg,#eef7ff,#bdcbdc);width:min(100%,420px);border-radius:47% 47% 42% 42%/44% 44% 43% 43%;padding:76px 34px 85px;box-shadow:inset -16px -15px 25px #93a4ba,0 20px 60px #05080e}.camera{position:absolute;top:30px;left:calc(50% - 7px);width:14px;height:14px;background:#182f4d;border:3px solid #859cb8;border-radius:50%}.eyes{display:flex;gap:23px;justify-content:center}.eye{width:150px;aspect-ratio:1;border-radius:50%;background:#07111c;box-shadow:0 0 0 9px #889bb1,inset 0 0 20px #000;overflow:hidden}.eye canvas{width:100%;height:100%;display:block}.stem{width:65px;height:33px;background:#a7b8cf}.foot{width:180px;height:18px;border-radius:90px 90px 30px 30px;background:#a8b9ce}.state{margin-top:22px;color:#c3d2e8}.control{margin:20px 0}label{display:block;margin-bottom:8px;font-weight:600}input[type=range]{width:100%}button,select{padding:11px 14px;border-radius:10px;border:1px solid #465c7a;background:#243751;color:#fff;font:inherit}button{cursor:pointer}button:hover{background:#345375}select{width:100%}.buttons{display:flex;flex-wrap:wrap;gap:9px}.tag{border-radius:20px;background:#1f4251;padding:5px 11px;font-size:12px;color:#99f1da}pre{white-space:pre-wrap;overflow-wrap:anywhere;background:#0b1423;border-radius:12px;padding:15px;color:#aee9cc}.note{font-size:13px;line-height:1.5;color:#a9bad0}.hint{font-size:12px;color:#9cb1ca;margin-top:6px}@media(max-width:750px){main{grid-template-columns:1fr}.head{max-width:340px;padding:67px 32px 74px}.eye{width:115px}}
+
+body.embedded header,body.embedded main>.panel:nth-child(2){display:none}body.embedded main{display:block;max-width:none;padding:0}body.embedded .panel.robot{padding:8px;min-height:0;background:transparent;border:0}body.embedded .head{transform:scale(.88);margin:-18px auto -21px}body.embedded .state{margin-top:6px}body.embedded .robot>.note{display:none}body.embedded .stem{height:25px}
+</style></head><body><header><div><h1>ROBI <span style="color:#80e9cd">/ Eye Studio</span></h1><small>Prototipo browser v0.3 · simulazione senza hardware</small></div><span class="tag">SIMULAZIONE</span></header><main><section class="panel robot"><div class="head" id="head"><div class="camera"></div><div class="eyes"><div class="eye"><canvas width="240" height="240" id="left"></canvas></div><div class="eye"><canvas width="240" height="240" id="right"></canvas></div></div></div><div class="stem"></div><div class="foot"></div><div class="state" id="status">● Riposo · pronto</div><p class="note">Muovi il cursore sopra la testa per simulare l'inseguimento del volto. Su touch, trascina il dito.</p></section><section class="panel"><h2 style="margin-top:0">Controllo occhi</h2><div class="control"><label for="mode">Stato</label><select id="mode"><option value="idle">Riposo</option><option value="listening">Ascolto</option><option value="thinking">Elaborazione</option><option value="speaking">Risposta</option><option value="curious">Curiosità</option><option value="happy">Felicità</option><option value="sleepy">Sonnolenza</option></select><div class="hint">La v0.3 corregge soprattutto le palpebre basse troppo invadenti e rende Felicità più leggibile.</div></div><div class="control"><label for="x">Sguardo orizzontale <output id="xv">0.00</output></label><input type="range" min="-1" max="1" step="0.01" value="0" id="x"></div><div class="control"><label for="y">Sguardo verticale <output id="yv">0.00</output></label><input type="range" min="-1" max="1" step="0.01" value="0" id="y"></div><div class="control"><label for="blinkSpeed">Velocità palpebre <output id="blinkSpeedLabel">Naturale</output></label><input id="blinkSpeed" type="range" min="0" max="2" step="1" value="1"></div><div class="buttons"><button id="blink">Sbatti palpebre</button><button id="center">Centra sguardo</button><button id="tracking">Tracking cursore: ON</button></div><h3>Messaggio previsto per ESP32</h3><pre id="payload"></pre><button id="copy">Copia JSON</button><p class="note">Il protocollo è ancora una proposta: questo simulatore non si collega alla scheda fisica e non riconosce volti né gestisce conversazioni.</p></section></main><script>
+const $=id=>document.getElementById(id);
+const controls={x:$('x'),y:$('y'),mode:$('mode')};
+const W=240,PI=Math.PI;
+const moods={
+ idle:{open:.90,iris:60,pupil:32,offsetY:2,upperSmile:0.00,lowerSmile:0.00,tilt:0,lookX:0,lookY:0},
+ listening:{open:1.02,iris:63,pupil:36,offsetY:-1,upperSmile:0.02,lowerSmile:0.00,tilt:0,lookX:0,lookY:0},
+ thinking:{open:.68,iris:59,pupil:28,offsetY:6,upperSmile:0.00,lowerSmile:0.00,tilt:-.05,lookX:.14,lookY:-.23},
+ speaking:{open:.94,iris:63,pupil:33,offsetY:1,upperSmile:.10,lowerSmile:.02,tilt:0,lookX:0,lookY:0},
+ curious:{open:1.02,iris:65,pupil:38,offsetY:-2,upperSmile:0.04,lowerSmile:0.00,tilt:.08,lookX:.20,lookY:-.08},
+ happy:{open:.84,iris:64,pupil:33,offsetY:0,upperSmile:.52,lowerSmile:.10,tilt:0,lookX:0,lookY:0},
+ sleepy:{open:.43,iris:58,pupil:28,offsetY:12,upperSmile:.02,lowerSmile:.02,tilt:0,lookX:0,lookY:.12}
+};
+let tracking=true,targetX=0,targetY=0,eyeX=0,eyeY=0;
+let currentOpen=.9,currentUpperSmile=0,currentLowerSmile=0,currentIris=60,currentPupil=32,currentTilt=0,currentOffsetY=2;
+let nextBlinkAt=performance.now()+2400,blinkAt=-10000,blinkDuration=350;
+let blinking=false;
+const canvases=[$('left'),$('right')];
+const rand=(a,b)=>a+Math.random()*(b-a);
+const clamp=(v,a,b)=>Math.min(b,Math.max(a,v));
+function blinkActive(now){return blinking && now-blinkAt<blinkDuration;}
+function payload(){return {type:'eyes',state:controls.mode.value,gaze_x:+targetX.toFixed(2),gaze_y:+targetY.toFixed(2),blink:blinkActive(performance.now())};}
+function refresh(){ $('xv').textContent=targetX.toFixed(2);$('yv').textContent=targetY.toFixed(2);$('payload').textContent=JSON.stringify(payload(),null,2);$('status').textContent='● '+controls.mode.selectedOptions[0].textContent+' · '+(tracking?'tracking simulato':'manuale');}
+function setGaze(x,y){targetX=clamp(x,-1,1);targetY=clamp(y,-1,1);controls.x.value=targetX;controls.y.value=targetY;refresh();}
+function setTracking(){$('tracking').textContent='Tracking cursore: '+(tracking?'ON':'OFF');}
+controls.x.addEventListener('input',()=>{tracking=false;setTracking();setGaze(+controls.x.value,targetY)});
+controls.y.addEventListener('input',()=>{tracking=false;setTracking();setGaze(targetX,+controls.y.value)});
+controls.mode.addEventListener('change',refresh);
+const speedNames=['Lento','Naturale','Vivace'];
+$('blinkSpeed').addEventListener('input',()=>{$('blinkSpeedLabel').textContent=speedNames[+$('blinkSpeed').value]});
+function triggerBlink(now=performance.now(),auto=false){if(blinkActive(now))return;blinkAt=now;blinkDuration=[480,365,270][+$('blinkSpeed').value]*rand(.94,1.09);blinking=true;refresh();}
+$('blink').onclick=()=>triggerBlink();
+$('center').onclick=()=>setGaze(0,0);
+$('tracking').onclick=()=>{tracking=!tracking;setTracking();refresh()};
+$('copy').onclick=async()=>{const data=JSON.stringify(payload(),null,2);try{await navigator.clipboard.writeText(data);$('copy').textContent='Copiato!';setTimeout(()=>$('copy').textContent='Copia JSON',900)}catch(e){const ta=document.createElement('textarea');ta.value=data;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();}};
+$('head').addEventListener('pointermove',e=>{if(!tracking)return;const r=e.currentTarget.getBoundingClientRect();setGaze(((e.clientX-r.left)/r.width-.5)*2,((e.clientY-r.top)/r.height-.5)*2)});
+$('head').addEventListener('pointerleave',()=>{if(tracking)setGaze(0,0)});
+function lerp(a,b,t){return a+(b-a)*t}
+function blinkClosure(now,side){if(!blinkActive(now))return 0;const t=clamp((now-blinkAt-(side===0?0:11))/blinkDuration,0,1);if(t<.36){let u=t/.36;return u*u*(3-2*u);}let u=(t-.36)/.64;return Math.pow(1-u,1.7);}
+function pathEllipse(ctx,x,y,rx,ry){ctx.beginPath();ctx.ellipse(x,y,rx,ry,0,0,2*PI)}
+function draw(c,side,now){
+ const ctx=c.getContext('2d');ctx.clearRect(0,0,W,W);ctx.save();ctx.beginPath();ctx.arc(120,120,117,0,2*PI);ctx.clip();
+ const mood=controls.mode.value,p=moods[mood];
+ const asymmetric=mood==='curious'?(side===0?-.13:.09):mood==='thinking'?(side===0?.04:-.04):0;
+ const openness=clamp(currentOpen+asymmetric,.27,1.12);
+ let gx=eyeX*33+p.lookX*18*(Math.abs(eyeX)<.4?1:.32);
+ let gy=eyeY*27+p.lookY*18*(Math.abs(eyeY)<.4?1:.32)+currentOffsetY;
+ if(mood==='thinking'){gx+=Math.sin(now/750)*2.5;gy+=Math.cos(now/1350)*1.5;}
+ if(mood==='speaking'){gy+=Math.sin(now/220)*1.8;}
+ const sclera=ctx.createRadialGradient(110,104,15,120,125,135);
+ sclera.addColorStop(0,'#fcffff');sclera.addColorStop(.65,'#eef6fa');sclera.addColorStop(1,'#b9cbd8');ctx.fillStyle=sclera;ctx.fillRect(0,0,W,W);
+ const cx=120+gx,cy=122+gy;
+ const rim=ctx.createRadialGradient(cx,cy,12,cx,cy,currentIris+7);
+ rim.addColorStop(0,'#0b2635');rim.addColorStop(.44,mood==='happy'?'#6ab3bb':'#589db6');rim.addColorStop(.72,mood==='listening'?'#71c7c0':'#367a9b');rim.addColorStop(.91,'#1b4e68');rim.addColorStop(1,'#143345');
+ ctx.fillStyle=rim;pathEllipse(ctx,cx,cy,currentIris+5,currentIris+5);ctx.fill();
+ ctx.save();pathEllipse(ctx,cx,cy,currentIris,currentIris);ctx.clip();
+ for(let i=0;i<58;i++){const a=i*(2*PI/58)+.1;let r=currentPupil+7+(i%4)*1.2;ctx.strokeStyle=i%3===0?'rgba(224,252,255,.16)':'rgba(9,41,62,.25)';ctx.lineWidth=i%5===0?2.4:1.2;ctx.beginPath();ctx.moveTo(cx+Math.cos(a)*r,cy+Math.sin(a)*r);ctx.lineTo(cx+Math.cos(a+.018)*(currentIris-5),cy+Math.sin(a+.018)*(currentIris-5));ctx.stroke();}
+ ctx.restore();
+ const pup=ctx.createRadialGradient(cx-9,cy-9,2,cx,cy,currentPupil+2);pup.addColorStop(0,'#0a1e29');pup.addColorStop(.7,'#081722');pup.addColorStop(1,'#030c14');ctx.fillStyle=pup;pathEllipse(ctx,cx,cy,currentPupil,currentPupil);ctx.fill();
+ ctx.fillStyle='rgba(255,255,255,.96)';pathEllipse(ctx,cx-currentIris*.36,cy-currentIris*.42,13.5,19);ctx.fill();
+ ctx.fillStyle='rgba(246,255,255,.65)';pathEllipse(ctx,cx+currentIris*.36,cy+currentIris*.30,5.5,7);ctx.fill();
+ ctx.fillStyle='rgba(255,255,255,.19)';pathEllipse(ctx,cx+currentIris*.11,cy-currentIris*.62,4,3);ctx.fill();
+ const closure=blinkClosure(now,side);
+ const centerY=120+currentTilt*19*(side===0?-1:1);
+ const topBase=centerY-103*openness;
+ const botBase=centerY+107*openness;
+ const topEdge=lerp(topBase,centerY+2,closure);
+ const botEdge=lerp(botBase,centerY-1,closure);
+ const upperShade=ctx.createLinearGradient(0,0,0,topEdge+20);upperShade.addColorStop(0,'#0a1a2b');upperShade.addColorStop(.8,'#132b41');upperShade.addColorStop(1,'#26394a');
+ ctx.fillStyle=upperShade;ctx.beginPath();ctx.moveTo(-20,-20);ctx.lineTo(260,-20);ctx.lineTo(260,topEdge-17);
+ ctx.bezierCurveTo(200,topEdge+18+currentUpperSmile*8,160,topEdge+4+currentUpperSmile*4,120,topEdge+6+currentUpperSmile*14);
+ ctx.bezierCurveTo(75,topEdge+5+currentUpperSmile*4,40,topEdge+18+currentUpperSmile*8,-20,topEdge-17);ctx.closePath();ctx.fill();
+ ctx.strokeStyle='rgba(83,116,143,.75)';ctx.lineWidth=3.5;ctx.beginPath();ctx.moveTo(-10,topEdge-14);ctx.quadraticCurveTo(120,topEdge+19+currentUpperSmile*13,250,topEdge-14);ctx.stroke();
+ const lowerShade=ctx.createLinearGradient(0,botEdge-20,0,240);lowerShade.addColorStop(0,'#273d52');lowerShade.addColorStop(.34,'#142d43');lowerShade.addColorStop(1,'#091c30');ctx.fillStyle=lowerShade;
+ ctx.beginPath();ctx.moveTo(-20,260);ctx.lineTo(260,260);ctx.lineTo(260,botEdge+12);
+ ctx.bezierCurveTo(200,botEdge-9-currentLowerSmile*13,160,botEdge-3-currentLowerSmile*16,120,botEdge-2-currentLowerSmile*18);
+ ctx.bezierCurveTo(75,botEdge-3-currentLowerSmile*16,40,botEdge-9-currentLowerSmile*13,-20,botEdge+12);ctx.closePath();ctx.fill();
+ ctx.strokeStyle='rgba(102,145,168,.40)';ctx.lineWidth=3;ctx.beginPath();ctx.moveTo(-10,botEdge+10);ctx.quadraticCurveTo(120,botEdge-12-currentLowerSmile*15,250,botEdge+10);ctx.stroke();
+ ctx.strokeStyle='rgba(221,244,255,.09)';ctx.lineWidth=4;ctx.beginPath();ctx.arc(120,120,114,PI*1.08,PI*1.9);ctx.stroke();
+ ctx.restore();
+}
+function animate(now){
+ if(blinking && now-blinkAt>blinkDuration){blinking=false;refresh();}
+ if(now>nextBlinkAt){triggerBlink(now,true);nextBlinkAt=now+rand(2600,5700);if(Math.random()<.19)nextBlinkAt=now+blinkDuration+rand(230,470);}
+ eyeX+=(targetX-eyeX)*.095;eyeY+=(targetY-eyeY)*.095;
+ const p=moods[controls.mode.value];
+ currentOpen+=(p.open-currentOpen)*.065;currentUpperSmile+=(p.upperSmile-currentUpperSmile)*.055;currentLowerSmile+=(p.lowerSmile-currentLowerSmile)*.055;currentIris+=(p.iris-currentIris)*.06;currentPupil+=(p.pupil-currentPupil)*.06;currentTilt+=(p.tilt-currentTilt)*.055;currentOffsetY+=(p.offsetY-currentOffsetY)*.06;
+ canvases.forEach((c,i)=>draw(c,i,now));requestAnimationFrame(animate);
+}
+refresh();requestAnimationFrame(animate);
+</script><script>
+// Collegamento con il controller Python. La pagina continua a funzionare anche da sola.
+const embedded=new URLSearchParams(location.search).has('embed');
+if(embedded){
+ document.body.classList.add('embedded');
+ let lastRemoteBlink=-1;
+ window.addEventListener('message',event=>{
+  if(event.origin!==location.origin||!event.data||!event.data.robi)return;
+  const s=event.data.robi;
+  if(s.state&&controls.mode.value!==s.state){controls.mode.value=s.state;refresh()}
+  if(s.use_gaze){tracking=false;setTracking();setGaze(s.gaze_x,s.gaze_y)}
+  else if(!tracking && Number.isFinite(s.gaze_x) && Number.isFinite(s.gaze_y))setGaze(s.gaze_x,s.gaze_y);
+  if(typeof s.blink_id==='number' && lastRemoteBlink!==s.blink_id){
+   if(lastRemoteBlink>=0)triggerBlink();lastRemoteBlink=s.blink_id;
+  }
+ });
+}
+</script></body></html>
