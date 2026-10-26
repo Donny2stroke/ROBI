@@ -30,7 +30,7 @@ class Core:
         camera = self.camera.status()
         with self.lock:
             x, y = (camera['gaze_x'], camera['gaze_y']) if self.camera_tracking and camera['active'] else (self.gaze_x,self.gaze_y)
-            return {'version':'0.4.0','state':self.state,'gaze_x':x,'gaze_y':y,
+            return {'version':'0.4.1','state':self.state,'gaze_x':x,'gaze_y':y,
                     'camera_tracking':self.camera_tracking,'blink_id':self.blink_id,
                     'camera':camera,'uptime_seconds':int(time.time()-self.started)}
 
@@ -151,7 +151,7 @@ def main():
     parser.add_argument('--port',type=int,default=8765)
     args = parser.parse_args()
     server = ThreadingHTTPServer(('127.0.0.1',args.port), Handler)
-    print(f'ROBI Core v0.4.0 | http://127.0.0.1:{args.port}',flush=True)
+    print(f'ROBI Core v0.4.1 | http://127.0.0.1:{args.port}',flush=True)
     print('Premi CTRL+C per fermare il server.',flush=True)
     try:
         server.serve_forever()
