@@ -4,17 +4,8 @@ import threading
 from urllib.request import Request, urlopen
 from urllib.error import URLError, HTTPError
 
-SYSTEM_PROMPT = ("Rispondi con un oggetto JSON che contenga solo la chiave reply, con la risposta finale da mostrare a voce. Non inserire spiegazioni del ragionamento. " 
-                 "Sei ROBI, un piccolo robot da scrivania. Parli italiano in modo naturale, "
-                 "caldo e conciso. Non fingere di aver visto o sentito cose non disponibili "
-                 "nei messaggi. Se non sei sicuro, dillo. Evita di attribuire emozioni "
-                 "alle persone sulla base di espressioni facciali. "
-                 "Nella chat, TU sei ROBI e la persona che scrive e' l'utente: quando "
-                 "l'utente domanda chi e' o cosa gli piace, riferisciti a informazioni "
-                 "che LUI ha comunicato nei messaggi precedenti. Non confondere "
-                 "la tua identita' con la sua. Non inventare ricordi: se non hai "
-                 "l'informazione, chiedila. La cronologia in messages e' il contesto "
-                 "della conversazione corrente.")
+from .personality import build_system_prompt
+
 def clean_answer(content: str) -> str:
     """Non pubblicare testo deliberativo invece della risposta finale."""
     import re
@@ -39,11 +30,44 @@ def extract_reply(data):
     return clean_answer(obj["reply"])
 
 
+def user_facts_context(history):
+    """Riporta messaggi dell'utente, non inferenze dell'assistente."""
+    statements = [m['content'] for m in history if m.get('role') == 'user' and isinstance(m.get('content'), str)]
+    if not statements:
+        return ''
+    return ('PROMEMORIA: solo affermazioni scritte dall\'utente; domande e ipotesi non confermano fatti. '
+            'Se un dettaglio viene corretto, prevale l\'ultima affermazione esplicita. '
+            'Non attribuire all\'utente idee proposte da ROBI.\n' +
+            '\\n'.join('- ' + json.dumps(text, ensure_ascii=False) for text in statements[-8:]))
+
+SUPPORTED_MODELS = ("qwen3:4b", "gemma3:4b")
+
+
 class Conversation:
-    def __init__(self, model="qwen3:4b", endpoint="http://127.0.0.1:11434/api/chat"):
+    def __init__(self, model="gemma3:4b", endpoint="http://127.0.0.1:11434/api/chat"):
         self.model, self.endpoint = model, endpoint
         self._lock = threading.Lock()
         self._history = []
+        if self.model not in SUPPORTED_MODELS:
+            raise ValueError("Modello AI non supportato.")
+    def model_status(self):
+        with self._lock:
+            return {"model": self.model, "available_models": list(SUPPORTED_MODELS)}
+
+    def set_model(self, model):
+        if not isinstance(model, str) or model not in SUPPORTED_MODELS:
+            raise ValueError("Modello non supportato. Scegli qwen3:4b o gemma3:4b.")
+        if not self._lock.acquire(blocking=False):
+            raise RuntimeError("Attendi che ROBI completi la risposta prima di cambiare modello.")
+        try:
+            # Evitiamo di mischiare gli output dei modelli durante il confronto.
+            if model != self.model:
+                self.model = model
+                self._history.clear()
+            return {"model": self.model, "messages": list(self._history)}
+        finally:
+            self._lock.release()
+
     def history(self):
         with self._lock:
             return list(self._history)
@@ -58,7 +82,7 @@ class Conversation:
         try:
             user={"role":"user","content":message.strip()}
             payload={"model":self.model,"stream":False,"think":False,
-                     "messages":[{"role":"system","content":SYSTEM_PROMPT}]+self._history[-16:]+[user],
+                     "messages":[{"role":"system","content":build_system_prompt()}, {"role":"system","content":user_facts_context(self._history)}]+self._history[-16:]+[user],
                      "options":{"num_ctx":4096,"num_predict":350},
                      "format":{"type":"object","properties":{"reply":{"type":"string"}},"required":["reply"],"additionalProperties":False}}
             request=Request(self.endpoint,data=json.dumps(payload).encode("utf-8"),
@@ -67,7 +91,7 @@ class Conversation:
                 with urlopen(request,timeout=120) as response:
                     data=json.load(response)
             except (URLError, HTTPError, TimeoutError, OSError) as exc:
-                raise RuntimeError("Ollama non disponibile: verifica che sia avviato e che qwen3:4b sia installato.") from exc
+                raise RuntimeError(f"Ollama non disponibile: verifica che sia avviato e che {self.model} sia installato.") from exc
             answer=extract_reply(data)
             if not answer:
                 raise RuntimeError("Ollama ha restituito una risposta vuota.")

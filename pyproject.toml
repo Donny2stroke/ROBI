@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "robi-core"
-version = "0.4.0"
+version = "0.4.1"
 description = "ROBI: desktop robot core and vision laboratory"
 requires-python = ">=3.11,<3.15"
 dependencies = ["opencv-python>=4.8,<5", "mediapipe>=0.10.14,<2"]
@@ -21,7 +21,7 @@ packages = ["robi"]
 include-package-data = true
 
 [tool.setuptools.package-data]
-robi = ["static/*.html"]
+robi = ["static/*.html", "personality.json"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

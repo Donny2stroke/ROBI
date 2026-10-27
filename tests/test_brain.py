@@ -18,7 +18,7 @@ def test_history_can_be_cleared():
     assert c.history()==[]
 
 def test_model_default():
-    assert Conversation().model=="qwen3:4b"
+    assert Conversation().model=="gemma3:4b"
 
 def test_clean_answer_rejects_reasoning():
     from robi.brain import clean_answer
@@ -64,7 +64,28 @@ def test_followup_includes_user_facts_in_model_context():
         c.reply("Chi sono e cosa mi piace?")
 
     messages = sent[-1]["messages"]
-    assert [m["role"] for m in messages] == ["system", "user", "assistant", "user"]
-    assert messages[1]["content"] == "Mi chiamo Marco e mi piace la pizza"
+    assert [m["role"] for m in messages] == ["system", "system", "user", "assistant", "user"]
+    assert messages[2]["content"] == "Mi chiamo Marco e mi piace la pizza"
     assert messages[-1]["content"] == "Chi sono e cosa mi piace?"
     assert "TU sei ROBI" in messages[0]["content"]
+
+def test_switch_model_clears_history():
+    c=Conversation()
+    c._history=[{"role":"user","content":"Mi chiamo Marco"}]
+    info=c.set_model("gemma3:4b")
+    assert info["model"]=="gemma3:4b"
+    assert info["messages"]==[]
+    assert c.model_status()["model"]=="gemma3:4b"
+
+def test_switch_to_same_model_preserves_history():
+    c=Conversation()
+    c._history=[{"role":"user","content":"Ciao"}]
+    assert len(c.set_model("gemma3:4b")["messages"])==1
+
+def test_rejects_unsupported_model():
+    c=Conversation()
+    try:
+        c.set_model("http://untrusted.example/model")
+        assert False
+    except ValueError:
+        pass
