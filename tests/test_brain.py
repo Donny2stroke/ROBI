@@ -68,3 +68,24 @@ def test_followup_includes_user_facts_in_model_context():
     assert messages[2]["content"] == "Mi chiamo Marco e mi piace la pizza"
     assert messages[-1]["content"] == "Chi sono e cosa mi piace?"
     assert "TU sei ROBI" in messages[0]["content"]
+
+def test_switch_model_clears_history():
+    c=Conversation()
+    c._history=[{"role":"user","content":"Mi chiamo Marco"}]
+    info=c.set_model("gemma3:4b")
+    assert info["model"]=="gemma3:4b"
+    assert info["messages"]==[]
+    assert c.model_status()["model"]=="gemma3:4b"
+
+def test_switch_to_same_model_preserves_history():
+    c=Conversation()
+    c._history=[{"role":"user","content":"Ciao"}]
+    assert len(c.set_model("qwen3:4b")["messages"])==1
+
+def test_rejects_unsupported_model():
+    c=Conversation()
+    try:
+        c.set_model("http://untrusted.example/model")
+        assert False
+    except ValueError:
+        pass
