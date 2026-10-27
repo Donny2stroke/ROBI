@@ -44,7 +44,7 @@ SUPPORTED_MODELS = ("qwen3:4b", "gemma3:4b")
 
 
 class Conversation:
-    def __init__(self, model="qwen3:4b", endpoint="http://127.0.0.1:11434/api/chat"):
+    def __init__(self, model="gemma3:4b", endpoint="http://127.0.0.1:11434/api/chat"):
         self.model, self.endpoint = model, endpoint
         self._lock = threading.Lock()
         self._history = []
