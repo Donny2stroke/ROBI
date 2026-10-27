@@ -5,6 +5,7 @@ from urllib.request import Request, urlopen
 from urllib.error import URLError, HTTPError
 
 from .personality import build_system_prompt
+from .memory import MemoryStore
 
 def clean_answer(content: str) -> str:
     """Non pubblicare testo deliberativo invece della risposta finale."""
@@ -44,8 +45,9 @@ SUPPORTED_MODELS = ("qwen3:4b", "gemma3:4b")
 
 
 class Conversation:
-    def __init__(self, model="gemma3:4b", endpoint="http://127.0.0.1:11434/api/chat"):
+    def __init__(self, model="gemma3:4b", endpoint="http://127.0.0.1:11434/api/chat", memory=None):
         self.model, self.endpoint = model, endpoint
+        self.memory = memory
         self._lock = threading.Lock()
         self._history = []
         if self.model not in SUPPORTED_MODELS:
@@ -82,7 +84,7 @@ class Conversation:
         try:
             user={"role":"user","content":message.strip()}
             payload={"model":self.model,"stream":False,"think":False,
-                     "messages":[{"role":"system","content":build_system_prompt()}, {"role":"system","content":user_facts_context(self._history)}]+self._history[-16:]+[user],
+                     "messages":[{"role":"system","content":build_system_prompt()}, {"role":"system","content":user_facts_context(self._history)}, {"role":"system","content":self.memory.context() if self.memory else ""}]+self._history[-16:]+[user],
                      "options":{"num_ctx":4096,"num_predict":350},
                      "format":{"type":"object","properties":{"reply":{"type":"string"}},"required":["reply"],"additionalProperties":False}}
             request=Request(self.endpoint,data=json.dumps(payload).encode("utf-8"),
