@@ -18,7 +18,7 @@ def test_history_can_be_cleared():
     assert c.history()==[]
 
 def test_model_default():
-    assert Conversation().model=="qwen3:4b"
+    assert Conversation().model=="gemma3:4b"
 
 def test_clean_answer_rejects_reasoning():
     from robi.brain import clean_answer
@@ -80,7 +80,7 @@ def test_switch_model_clears_history():
 def test_switch_to_same_model_preserves_history():
     c=Conversation()
     c._history=[{"role":"user","content":"Ciao"}]
-    assert len(c.set_model("qwen3:4b")["messages"])==1
+    assert len(c.set_model("gemma3:4b")["messages"])==1
 
 def test_rejects_unsupported_model():
     c=Conversation()
