@@ -96,6 +96,8 @@ class Handler(BaseHTTPRequestHandler):
         path = urlsplit(self.path).path
         if path == '/api/camera/stream.mjpg':
             return self.mjpeg_stream()
+        if path == '/api/chat/model':
+            return self.json_reply(200,core.conversation.model_status())
         if path == '/api/chat/history':
             return self.json_reply(200,{'messages':core.conversation.history()})
         if path == '/api/status':
@@ -114,7 +116,7 @@ class Handler(BaseHTTPRequestHandler):
 
     def do_POST(self):
         path = urlsplit(self.path).path
-        if path not in ('/api/eyes','/api/camera/start','/api/camera/stop','/api/camera/config','/api/chat','/api/chat/clear'):
+        if path not in ('/api/eyes','/api/camera/start','/api/camera/stop','/api/camera/config','/api/chat','/api/chat/clear','/api/chat/model'):
             return self.json_reply(404, {'error':'Risorsa non trovata.'})
         try:
             length = int(self.headers.get('Content-Length','0'))
@@ -122,7 +124,9 @@ class Handler(BaseHTTPRequestHandler):
                 return self.json_reply(413,{'error':'Richiesta troppo grande.'})
             raw = self.rfile.read(length)
             data = json.loads(raw) if raw else {}
-            if path == '/api/chat':
+            if path == '/api/chat/model':
+                out = core.conversation.set_model(data.get('model'))
+            elif path == '/api/chat':
                 out = core.conversation.reply(data.get('message'))
             elif path == '/api/chat/clear':
                 core.conversation.clear()
