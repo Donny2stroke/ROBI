@@ -116,11 +116,11 @@ class Handler(BaseHTTPRequestHandler):
                 return self.json_reply(404,{'error':'Nessun fotogramma disponibile.'})
             return self.reply(200,frame,'image/jpeg')
         path = '/index.html' if path == '/' else path
-        allowed = {'/index.html','/eyes.html'}
+        allowed = {'/index.html','/eyes.html','/memory-workspace.js'}
         if path not in allowed:
             return self.json_reply(404, {'error':'Risorsa non trovata.'})
         data = (STATIC / path.lstrip('/')).read_bytes()
-        return self.reply(200,data,'text/html; charset=utf-8')
+        return self.reply(200,data,'application/javascript; charset=utf-8' if path.endswith('.js') else 'text/html; charset=utf-8')
 
     def do_POST(self):
         path = urlsplit(self.path).path
