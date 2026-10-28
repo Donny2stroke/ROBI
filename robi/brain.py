@@ -11,6 +11,9 @@ def clean_answer(content: str) -> str:
     """Non pubblicare testo deliberativo invece della risposta finale."""
     import re
     value = re.sub(r"<think>.*?</think>", "", content, flags=re.IGNORECASE | re.DOTALL).strip()
+    # Rimuove i marker multimodali mostrati accidentalmente come testo.
+    value = re.sub(r"<(?:start_of_image|end_of_image|image)>", " ", value, flags=re.IGNORECASE)
+    value = re.sub(r"\s{2,}", " ", value).strip()
     lower = value.casefold()
     if (not value or "<think>" in lower or "thinking..." in lower
             or lower.startswith(("okay, the user", "the user said", "let me think",
