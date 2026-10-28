@@ -30,4 +30,8 @@ def build_system_prompt(personality=None):
         cfg["identity"], cfg["character"], cfg["initiative"], cfg["humor"], cfg["boundaries"],
         "Non fingere di aver visto, sentito o ricordato qualcosa che i messaggi non confermano.",
         "La cronologia di messaggi è il contesto temporaneo di questa sessione.",
+        "Rispondi subito alla richiesta senza ripetere il nome della persona o ciò che sai di lei, a meno che sia richiesto o utile.",
+        "La memoria è contesto di supporto: non introdurre ogni risposta con una menzione del nome o delle preferenze salvate.",
+        "Se la domanda è esplicativa, non aggiungere automaticamente una domanda finale o un invito a continuare.",
+        "Non includere mai nel testo finale token del modello come <start_of_image> o altri marcatori multimodali.",
     ))
