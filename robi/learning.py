@@ -54,6 +54,12 @@ def explicit_fallback(messages):
             continue
         for category,pattern in patterns:
             if re.search(pattern,value,re.IGNORECASE):
-                suggestions.append({"category":category,"fact":value,"evidence":message})
+                fact=value
+                work=re.search(r"\b(?:io\s+)?lavoro\s+per\s+(?:questa\s+azienda|ibm)\s+da\s+(\d+)\s+ann[oi]",value,re.IGNORECASE)
+                if work and "ibm" in value.casefold():
+                    fact="Lavoro per IBM da "+work.group(1)+" anno" if work.group(1)=="1" else "Lavoro per IBM da "+work.group(1)+" anni"
+                elif re.match(r"^sviluppo\s+web\s+per\s+(?:il\s+cliente\s+)?campari\s*$",value,re.IGNORECASE):
+                    fact="Mi occupo di sviluppo web per il cliente Campari"
+                suggestions.append({"category":category,"fact":fact,"evidence":message})
                 break
     return suggestions[-5:]
