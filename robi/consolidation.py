@@ -14,6 +14,12 @@ def propose_consolidation(history, memory, model="gemma3:4b", endpoint="http://1
     candidates=suggest_memories(history,model,endpoint) if candidates is None else candidates
     if not candidates:
         return []
+    candidates=[c for c in candidates if isinstance(c,dict)
+                and c.get("category") in ("identity","preference","interaction")
+                and isinstance(c.get("fact"),str) and 1<=len(c["fact"].strip())<=300
+                and isinstance(c.get("evidence"),str) and c["evidence"].strip()]
+    if not candidates:
+        return []
     existing=memory.list()
     by_id={item["id"]:item for item in existing}
     # Collisioni esatte vengono identificate senza ulteriore inferenza.
@@ -44,7 +50,7 @@ def propose_consolidation(history, memory, model="gemma3:4b", endpoint="http://1
     request=Request(endpoint,data=json.dumps(payload).encode(),headers={"Content-Type":"application/json"},method="POST")
     with transport(request,timeout=90) as response:
         decisions=json.loads(json.load(response)["message"]["content"]).get("decisions",[])
-    decisions_by_index={d.get("index"):d for d in decisions if isinstance(d,dict)}
+    decisions_by_index={d.get("index"):d for d in decisions if isinstance(d,dict) and type(d.get("index")) is int}
     for i,c in undecided:
         d=decisions_by_index.get(i,{})
         action=d.get("action")
