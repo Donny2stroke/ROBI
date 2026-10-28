@@ -60,7 +60,7 @@ def explicit_fallback(messages):
                     fact="Lavoro per IBM da "+work.group(1)+" anno" if work.group(1)=="1" else "Lavoro per IBM da "+work.group(1)+" anni"
                 elif re.match(r"^sviluppo\s+web\s+per\s+(?:il\s+cliente\s+)?campari\s*$",value,re.IGNORECASE):
                     fact="Mi occupo di sviluppo web per il cliente Campari"
-                elif re.search(r"\\bwordpress\\b",value,re.IGNORECASE) and re.search(r"\\bgutenberg\\b",value,re.IGNORECASE) and re.search(r"\\bcampari\\b",value,re.IGNORECASE):
+                elif re.search(r"\bwordpress\b",value,re.IGNORECASE) and re.search(r"\bgutenberg\b",value,re.IGNORECASE) and re.search(r"\bcampari\b",value,re.IGNORECASE):
                     fact="Utilizzo WordPress e Gutenberg per lo sviluppo web del cliente Campari"
                 suggestions.append({"category":category,"fact":fact,"evidence":message})
                 break
