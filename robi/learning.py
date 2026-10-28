@@ -37,7 +37,7 @@ def suggest_memories(history, model="gemma3:4b",
              "options":{"num_predict":700,"num_ctx":4096}}
     request=Request(endpoint,data=json.dumps(payload).encode("utf-8"),
                     headers={"Content-Type":"application/json"},method="POST")
-    with urlopen(request,timeout=90) as response:
+    with urlopen(request,timeout=45) as response:
         result=json.load(response)
     data=json.loads(result.get("message",{}).get("content","{}"))
     output=[]
@@ -86,7 +86,7 @@ def verify_candidates(candidates, model, endpoint):
           "options":{"num_ctx":4096,"num_predict":220}}
     req=Request(endpoint,data=json.dumps(data).encode(),
                 headers={"Content-Type":"application/json"},method="POST")
-    with urlopen(req,timeout=90) as response:
+    with urlopen(req,timeout=45) as response:
         answer=json.loads(json.load(response)["message"]["content"])
     verdicts=answer.get("verdicts",[])
     accepted={v["index"] for v in verdicts if isinstance(v,dict)
