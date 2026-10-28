@@ -58,4 +58,37 @@ def suggest_memories(history, model="gemma3:4b",
             output.append(entry)
         if len(output)==5:
             break
-    return output
+    if not output:
+        return []
+    return verify_candidates(output, model, endpoint)
+
+
+def verify_candidates(candidates, model, endpoint):
+    """Second pass: independent grounding judgement. Fail closed on invalid output."""
+    verdict_schema={"type":"object","properties":{"verdicts":{"type":"array","items":{
+        "type":"object","properties":{"index":{"type":"integer"},"supported":{"type":"boolean"}},
+        "required":["index","supported"],"additionalProperties":False}}},
+        "required":["verdicts"],"additionalProperties":False}
+    prompt=(
+        "Sei un verificatore rigoroso di provenienza. Per ogni candidato "
+        "controlla se il fatto è direttamente supportato dalla sua specifica "
+        "fonte utente. Non usare altri messaggi, conoscenze generali o "
+        "deduzioni: nomi, tempi, progetti, tecnologie e ruoli devono "
+        "essere nella fonte. Se manca anche una parte del fatto, supported=false. "
+        "Rispondi solo con index e supported. Un fatto può essere una "
+        "parafrasi fedele, ma non può aggiungere dettagli."
+    )
+    data={"model":model,"stream":False,"think":False,"format":verdict_schema,
+          "messages":[{"role":"system","content":prompt},
+                      {"role":"user","content":json.dumps(
+                          [{"index":i,"fact":c["fact"],"evidence":c["evidence"]}
+                           for i,c in enumerate(candidates)],ensure_ascii=False)}],
+          "options":{"num_ctx":4096,"num_predict":220}}
+    req=Request(endpoint,data=json.dumps(data).encode(),
+                headers={"Content-Type":"application/json"},method="POST")
+    with urlopen(req,timeout=90) as response:
+        answer=json.loads(json.load(response)["message"]["content"])
+    verdicts=answer.get("verdicts",[])
+    accepted={v["index"] for v in verdicts if isinstance(v,dict)
+              and type(v.get("index")) is int and v.get("supported") is True}
+    return [c for i,c in enumerate(candidates) if i in accepted]
