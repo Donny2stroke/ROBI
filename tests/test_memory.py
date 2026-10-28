@@ -66,3 +66,11 @@ def test_topic_followup_and_style_context():
     assert "non citarli" in ctx
     assert m.search("Ti ricordi se preferisco la vaniglia?")==[]
     m.close()
+
+
+def test_small_memory_retains_pistachio():
+    m=MemoryStore(":memory:")
+    m.add("preference","Il mio gusto preferito è pistacchio")
+    m.add("interaction","Risposte naturali")
+    assert "pistacchio" in m.relevant_context("Quale gusto di gelato mi piace?")
+    m.close()
