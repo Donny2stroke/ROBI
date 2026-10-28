@@ -47,3 +47,12 @@ def test_relevant_context_filters_unrelated_preferences():
     assert "risposte dirette" in ctx
     assert "pistacchio" not in ctx
     m.close()
+
+def test_search_handles_punctuation_and_unicode_words():
+    m=MemoryStore(":memory:")
+    m.add("preference","Adoro programmare in Python")
+    m.add("preference","Preferisco il caffè")
+    assert any("Python" in x["fact"] for x in m.search("Come funziona Python?"))
+    assert any("caffè" in x["fact"] for x in m.search("Ti piace il caffè?"))
+    assert not m.search("??!!")
+    m.close()
