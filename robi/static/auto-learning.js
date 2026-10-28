@@ -18,10 +18,11 @@
     if(!response.ok)return;
     const state=await response.json();
     if(document.activeElement!==toggle)toggle.checked=!!state.enabled;
-    const label=state.status==='running'?'Analisi della memoria in corso':
+    const label=state.status==='running'?'Analisi della memoria in corso · '+(state.elapsed_seconds||0)+'s':state.status==='error'?'Memoria AI · Analisi non riuscita':
       state.enabled?'Memoria AI · '+(state.step||'Pronta'):'Memoria AI · Modalità manuale';
     summary.textContent=label;
-    if(state.status==='running')details.textContent=state.step||'ROBI sta analizzando...';
+    if(state.status==='running')details.textContent=(state.step||'ROBI sta analizzando...')+'\nTempo trascorso: '+(state.elapsed_seconds||0)+' secondi';
+    else if(state.status==='error')details.textContent='Analisi non completata: '+(state.error||'Ollama non disponibile')+'\nNessun dato è stato salvato da questo ciclo.';
     else{
       const events=state.events||[];
       const signature=JSON.stringify(events);
