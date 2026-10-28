@@ -76,7 +76,7 @@
  }
  canvas.addEventListener('wheel',e=>{e.preventDefault();zoom=Math.max(.5,Math.min(8,zoom*(e.deltaY>0?.85:1.15)));draw()},{passive:false});
  canvas.addEventListener('pointerdown',e=>{drag={x:e.offsetX,y:e.offsetY,startX:panX,startY:panY};canvas.setPointerCapture(e.pointerId)});
- canvas.addEventListener('pointermove',e=>{if(!drag)return;panX=drag.startX+e.offsetX-drag.x;panY=drag.startY+e.offsetY-drag.y;draw()});
+ canvas.addEventListener('pointermove',e=>{if(!drag)return;panX=drag.startX+(e.offsetX-drag.x)*canvas.width/canvas.clientWidth;panY=drag.startY+(e.offsetY-drag.y)*canvas.height/canvas.clientHeight;draw()});
  canvas.addEventListener('pointerup',e=>{
   if(!drag)return;
   if(Math.hypot(e.offsetX-drag.x,e.offsetY-drag.y)<6){
