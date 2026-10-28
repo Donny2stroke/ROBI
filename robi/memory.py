@@ -30,6 +30,28 @@ class MemoryStore:
             if "note" not in cols:
                 self.db.execute("ALTER TABLE memories ADD COLUMN note TEXT NOT NULL DEFAULT ''")
             self.db.execute("CREATE TABLE IF NOT EXISTS memory_vectors (memory_id INTEGER PRIMARY KEY, fact TEXT NOT NULL, model TEXT NOT NULL, vector TEXT NOT NULL)")
+    def record_curator_event(self, outcome, proposal, verdict):
+        """Audit: decisions and sources, never hidden weight modifications."""
+        with self.lock, self.db:
+            self.db.execute("""CREATE TABLE IF NOT EXISTS curator_events (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                outcome TEXT NOT NULL, fact TEXT NOT NULL, evidence TEXT NOT NULL,
+                reason TEXT NOT NULL, saved_id INTEGER, created_at TEXT DEFAULT CURRENT_TIMESTAMP)""")
+            self.db.execute(
+                "INSERT INTO curator_events(outcome,fact,evidence,reason,saved_id) VALUES(?,?,?,?,?)",
+                (outcome, proposal["candidate"]["fact"][:300],
+                 proposal["candidate"]["evidence"][:2000],
+                 str(verdict.get("reason",""))[:500],proposal.get("saved_id")))
+
+    def curator_events(self, limit=30):
+        with self.lock:
+            self.db.execute("""CREATE TABLE IF NOT EXISTS curator_events (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                outcome TEXT NOT NULL, fact TEXT NOT NULL, evidence TEXT NOT NULL,
+                reason TEXT NOT NULL, saved_id INTEGER, created_at TEXT DEFAULT CURRENT_TIMESTAMP)""")
+            rows=self.db.execute("SELECT outcome,fact,evidence,reason,saved_id,created_at FROM curator_events ORDER BY id DESC LIMIT ?",(limit,)).fetchall()
+        return [dict(zip(("outcome","fact","evidence","reason","saved_id","created_at"),r)) for r in rows]
+
     def update(self, memory_id, category, fact, note=""):
         if type(memory_id) is not int or memory_id < 1:
             raise ValueError("ID ricordo non valido.")
