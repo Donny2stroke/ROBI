@@ -94,3 +94,17 @@ def test_gemma_multimodal_markers_are_cleaned():
     from robi.brain import clean_answer
     assert clean_answer("Python è semplice. <start_of_image> È leggibile.") == "Python è semplice. È leggibile."
     assert clean_answer("<start_of_image> Ciao.") == "Ciao."
+
+
+def test_preload_is_empty_chat_request():
+    import io,json
+    from unittest.mock import patch
+    from robi.brain import preload_model
+    seen=[]
+    def fake(request,timeout):
+        seen.append(json.loads(request.data))
+        return io.BytesIO(b"{}")
+    with patch("robi.brain.urlopen",side_effect=fake):
+        preload_model("gemma3:4b")
+    assert seen[0]["messages"]==[]
+    assert seen[0]["keep_alive"]=="30m"
