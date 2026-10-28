@@ -29,6 +29,36 @@ class Core:
         self.camera_tracking = False
         self.blink_id = 0
         self.started = time.time()
+        self.learning_lock = threading.RLock()
+        self.learning_state = {'status':'idle','proposals':[],'analyzed_turns':0}
+
+    def schedule_learning(self):
+        """Analisi locale dopo 3 nuovi messaggi; la chat rimane non bloccante."""
+        history=self.conversation.history()
+        turns=sum(m.get("role")=="user" for m in history)
+        with self.learning_lock:
+            if turns<3 or turns-self.learning_state["analyzed_turns"]<3:
+                return
+            if self.learning_state["status"]=="running":
+                return
+            self.learning_state["status"]="running"
+            self.learning_state["analyzed_turns"]=turns
+        model=self.conversation.model
+        def work():
+            try:
+                proposals=propose_consolidation(history,self.memory,model)
+                with self.learning_lock:
+                    self.learning_state["proposals"]=proposals
+                    self.learning_state["status"]="ready"
+            except (OSError,TimeoutError,ValueError,KeyError,TypeError,RuntimeError) as exc:
+                with self.learning_lock:
+                    self.learning_state["status"]="error"
+                    self.learning_state["error"]=str(exc)
+        threading.Thread(target=work,daemon=True,name="robi-learning").start()
+
+    def learning_snapshot(self):
+        with self.learning_lock:
+            return dict(self.learning_state)
 
     def snapshot(self):
         camera = self.camera.status()
@@ -100,6 +130,8 @@ class Handler(BaseHTTPRequestHandler):
         path = urlsplit(self.path).path
         if path == '/api/camera/stream.mjpg':
             return self.mjpeg_stream()
+        if path == '/api/learning/pending':
+            return self.json_reply(200,core.learning_snapshot())
         if path == '/api/memory/map':
             return self.json_reply(200,core.memory.vector_map())
         if path == '/api/memories':
@@ -148,6 +180,7 @@ class Handler(BaseHTTPRequestHandler):
                 out = core.conversation.set_model(data.get('model'))
             elif path == '/api/chat':
                 out = core.conversation.reply(data.get('message'))
+                core.schedule_learning()
             elif path == '/api/chat/clear':
                 core.conversation.clear()
                 out = {'messages': []}
