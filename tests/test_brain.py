@@ -89,3 +89,8 @@ def test_rejects_unsupported_model():
         assert False
     except ValueError:
         pass
+
+def test_gemma_multimodal_markers_are_cleaned():
+    from robi.brain import clean_answer
+    assert clean_answer("Python è semplice. <start_of_image> È leggibile.") == "Python è semplice. È leggibile."
+    assert clean_answer("<start_of_image> Ciao.") == "Ciao."
