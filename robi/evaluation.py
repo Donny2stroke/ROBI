@@ -12,7 +12,7 @@ def evaluate(history,model="gemma3:4b",endpoint="http://127.0.0.1:11434/api/chat
     prompt=("Sei un revisore indipendente della qualità di una risposta. "
             "Valuta da 1 a 5 pertinenza, chiarezza, adeguatezza del tono e supporto nei messaggi. "
             "Non presumere che il modello abbia sempre ragione: verifica la risposta rispetto al contesto. "
-            "Non accertare fatti esterni che non puoi verificare. Motiva brevemente in italiano.")
+            "Non disponi di fonti aggiornate o verifica esterna. Valuta solo la coerenza con il contesto, non la verità dei fatti esterni. Non dichiarare verificati versioni software, date o altri fatti senza fonti. Dichiara nella motivazione che i fatti esterni non sono stati verificati.")
     data={"model":model,"stream":False,"think":False,"format":SCHEMA,
           "messages":[{"role":"system","content":prompt},
                       {"role":"user","content":json.dumps(history[-8:],ensure_ascii=False)}],
@@ -26,4 +26,4 @@ def evaluate(history,model="gemma3:4b",endpoint="http://127.0.0.1:11434/api/chat
         raise ValueError("Punteggi AI non validi.")
     if not isinstance(scores.get("reason"),str) or len(scores["reason"])>1000:
         raise ValueError("Motivazione AI non valida.")
-    return {**scores,"model":model,"automatic":True}
+    return {**scores,"model":model,"automatic":True,"fact_checked":False}
