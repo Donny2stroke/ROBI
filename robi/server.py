@@ -9,7 +9,7 @@ import time
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from urllib.parse import urlsplit
 from .camera import CameraService
-from .brain import Conversation
+from .brain import Conversation, preload_model
 from .memory import MemoryStore
 from .learning import suggest_memories
 
@@ -33,7 +33,7 @@ class Core:
         camera = self.camera.status()
         with self.lock:
             x, y = (camera['gaze_x'], camera['gaze_y']) if self.camera_tracking and camera['active'] else (self.gaze_x,self.gaze_y)
-            return {'version':'0.4.3','state':self.state,'gaze_x':x,'gaze_y':y,
+            return {'version':'0.4.5','state':self.state,'gaze_x':x,'gaze_y':y,
                     'camera_tracking':self.camera_tracking,'blink_id':self.blink_id,
                     'camera':camera,'uptime_seconds':int(time.time()-self.started)}
 
@@ -121,7 +121,7 @@ class Handler(BaseHTTPRequestHandler):
 
     def do_POST(self):
         path = urlsplit(self.path).path
-        if path not in ('/api/eyes','/api/camera/start','/api/camera/stop','/api/camera/config','/api/chat','/api/chat/clear','/api/chat/model','/api/memories','/api/memories/delete','/api/memories/clear','/api/learning/suggest'):
+        if path not in ('/api/eyes','/api/camera/start','/api/camera/stop','/api/camera/config','/api/chat','/api/chat/clear','/api/chat/model','/api/memories','/api/memories/delete','/api/memories/clear','/api/memories/update','/api/learning/suggest'):
             return self.json_reply(404, {'error':'Risorsa non trovata.'})
         try:
             length = int(self.headers.get('Content-Length','0'))
@@ -133,6 +133,8 @@ class Handler(BaseHTTPRequestHandler):
                 out = {'suggestions':suggest_memories(core.conversation.history(),core.conversation.model)}
             elif path == '/api/memories':
                 out = core.memory.add(data.get('category'),data.get('fact'))
+            elif path == '/api/memories/update':
+                out = core.memory.update(data.get('id'),data.get('category'),data.get('fact'),data.get('note',''))
             elif path == '/api/memories/delete':
                 out = core.memory.delete(data.get('id'))
             elif path == '/api/memories/clear':
@@ -170,8 +172,15 @@ def main():
     parser.add_argument('--port',type=int,default=8765)
     args = parser.parse_args()
     server = ThreadingHTTPServer(('127.0.0.1',args.port), Handler)
-    print(f'ROBI Core v0.4.3 | http://127.0.0.1:{args.port}',flush=True)
+    print(f'ROBI Core v0.4.5 | http://127.0.0.1:{args.port}',flush=True)
     print('Premi CTRL+C per fermare il server.',flush=True)
+    def warmup():
+        try:
+            preload_model(core.conversation.model,core.conversation.endpoint)
+            print('ROBI AI: modello pronto.',flush=True)
+        except (OSError, TimeoutError, ValueError, KeyError) as exc:
+            print(f'ROBI AI: preload non riuscito ({exc}); caricamento alla prima richiesta.',flush=True)
+    threading.Thread(target=warmup,name='robi-ollama-warmup',daemon=True).start()
     try:
         server.serve_forever()
     except KeyboardInterrupt:

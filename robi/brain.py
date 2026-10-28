@@ -45,6 +45,16 @@ def user_facts_context(history):
             '\\n'.join('- ' + json.dumps(text, ensure_ascii=False) for text in statements[-8:]))
 
 SUPPORTED_MODELS = ("qwen3:4b", "gemma3:4b")
+MODEL_KEEP_ALIVE = "30m"
+
+def preload_model(model, endpoint="http://127.0.0.1:11434/api/chat"):
+    """Carica il modello senza generare testo; non modifica la cronologia."""
+    if model not in SUPPORTED_MODELS:
+        raise ValueError("Modello non supportato.")
+    request=Request(endpoint, data=json.dumps({"model":model,"messages":[],"stream":False,"keep_alive":MODEL_KEEP_ALIVE}).encode("utf-8"),headers={"Content-Type":"application/json"},method="POST")
+    with urlopen(request,timeout=120) as response:
+        json.load(response)
+
 
 
 class Conversation:
@@ -86,8 +96,8 @@ class Conversation:
             raise RuntimeError("ROBI sta ancora rispondendo: riprova tra poco.")
         try:
             user={"role":"user","content":message.strip()}
-            payload={"model":self.model,"stream":False,"think":False,
-                     "messages":[{"role":"system","content":build_system_prompt()}, {"role":"system","content":user_facts_context(self._history)}, {"role":"system","content":self.memory.context() if self.memory else ""}]+self._history[-16:]+[user],
+            payload={"model":self.model,"stream":False,"think":False,"keep_alive":MODEL_KEEP_ALIVE,
+                     "messages":[{"role":"system","content":build_system_prompt()}, {"role":"system","content":user_facts_context(self._history)}, {"role":"system","content":self.memory.relevant_context(" ".join([x["content"] for x in self._history[-4:] if x.get("role")=="user"][-2:] + [message])) if self.memory else ""}]+self._history[-16:]+[user],
                      "options":{"num_ctx":4096,"num_predict":350},
                      "format":{"type":"object","properties":{"reply":{"type":"string"}},"required":["reply"],"additionalProperties":False}}
             request=Request(self.endpoint,data=json.dumps(payload).encode("utf-8"),
