@@ -35,7 +35,7 @@ def curate(proposals, memory, model="gemma3:4b",
         {"role":"user","content":json.dumps([{"index":i,"proposal":p} for i,p in enumerate(valid)],ensure_ascii=False)}],
         "options":{"num_ctx":4096,"num_predict":450}}).encode(),
         headers={"Content-Type":"application/json"},method="POST")
-    with transport(request,timeout=90) as response:
+    with transport(request,timeout=45) as response:
         verdict=json.loads(json.load(response)["message"]["content"])
     decisions={d.get("index"):d for d in verdict.get("decisions",[])
                if isinstance(d,dict) and type(d.get("index")) is int}
