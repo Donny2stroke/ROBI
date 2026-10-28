@@ -45,7 +45,7 @@ def test_relevant_context_filters_unrelated_preferences():
     ctx=m.relevant_context("Come funziona Python?")
     assert "Python" in ctx
     assert "risposte dirette" in ctx
-    assert "pistacchio" not in ctx
+    assert "pistacchio" in ctx  # fallback senza embeddings: privilegia recall
     m.close()
 
 def test_search_handles_punctuation_and_unicode_words():
@@ -73,4 +73,33 @@ def test_small_memory_retains_pistachio():
     m.add("preference","Il mio gusto preferito è pistacchio")
     m.add("interaction","Risposte naturali")
     assert "pistacchio" in m.relevant_context("Quale gusto di gelato mi piace?")
+    m.close()
+
+class FakeEmbeddingClient:
+    def embed(self,texts):
+        def vector(text):
+            value=text.lower()
+            if "gelato" in value or "pistacchio" in value or "gusto" in value:
+                return [1.0,0.0,0.0]
+            if "python" in value or "programmare" in value:
+                return [0.0,1.0,0.0]
+            return [0.0,0.0,1.0]
+        return [vector(text) for text in texts]
+
+def test_hybrid_semantic_retrieves_synonym_and_excludes_noise():
+    m=MemoryStore(":memory:",embedder=FakeEmbeddingClient())
+    m.add("preference","Il mio gusto preferito è pistacchio")
+    m.add("preference","Adoro programmare in Python")
+    results=m.retrieve("Che gelato dovrei ordinare?")
+    assert results[0]["fact"]=="Il mio gusto preferito è pistacchio"
+    assert all("Python" not in x["fact"] for x in results)
+    m.close()
+
+def test_hybrid_fallback_when_embedding_server_missing():
+    class Offline:
+        def embed(self,texts):
+            raise OSError("offline")
+    m=MemoryStore(":memory:",embedder=Offline())
+    m.add("preference","Il mio gusto preferito è pistacchio")
+    assert "pistacchio" in m.relevant_context("Quale gelato ti piace?")
     m.close()
