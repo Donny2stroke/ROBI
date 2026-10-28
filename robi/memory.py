@@ -29,6 +29,7 @@ class MemoryStore:
                 self.db.execute("ALTER TABLE memories ADD COLUMN updated_at TEXT")
             if "note" not in cols:
                 self.db.execute("ALTER TABLE memories ADD COLUMN note TEXT NOT NULL DEFAULT ''")
+            self.db.execute("CREATE TABLE IF NOT EXISTS memory_vectors (memory_id INTEGER PRIMARY KEY, fact TEXT NOT NULL, model TEXT NOT NULL, vector TEXT NOT NULL)")
     def update(self, memory_id, category, fact, note=""):
         if type(memory_id) is not int or memory_id < 1:
             raise ValueError("ID ricordo non valido.")
@@ -69,8 +70,25 @@ class MemoryStore:
         if not items:
             return []
         try:
-            vectors=self.embedder.embed([query]+[m["fact"] for m in items])
-            scores={m["id"]:cosine(vectors[0],vec) for m,vec in zip(items,vectors[1:])}
+            model=getattr(self.embedder,"model","test")
+            with self.lock:
+                rows=self.db.execute("SELECT memory_id,fact,model,vector FROM memory_vectors").fetchall()
+            cached={row[0]:row for row in rows}
+            missing=[m for m in items if m["id"] not in cached or
+                     cached[m["id"]][1]!=m["fact"] or cached[m["id"]][2]!=model]
+            vectors=self.embedder.embed([query]+[m["fact"] for m in missing])
+            query_vector=vectors[0]
+            current=dict(zip((m["id"] for m in missing),vectors[1:]))
+            with self.lock,self.db:
+                for m in missing:
+                    self.db.execute("INSERT OR REPLACE INTO memory_vectors VALUES(?,?,?,?)",
+                                    (m["id"],m["fact"],model,json.dumps(current[m["id"]])))
+            scores={}
+            for m in items:
+                vec=current.get(m["id"])
+                if vec is None:
+                    vec=json.loads(cached[m["id"]][3])
+                scores[m["id"]]=cosine(query_vector,vec)
             lexical={m["id"] for m in self.search(query,limit=100)}
             ranked=sorted(items,key=lambda m:(0.75*scores.get(m["id"],0)+
                           (0.25 if m["id"] in lexical else 0),m["id"]),reverse=True)
@@ -113,10 +131,12 @@ class MemoryStore:
             raise ValueError("ID ricordo non valido.")
         with self.lock,self.db:
             count=self.db.execute("DELETE FROM memories WHERE id=?",(memory_id,)).rowcount
+            self.db.execute("DELETE FROM memory_vectors WHERE memory_id=?",(memory_id,))
         return {"deleted":bool(count)}
     def clear(self):
         with self.lock,self.db:
             self.db.execute("DELETE FROM memories")
+            self.db.execute("DELETE FROM memory_vectors")
         return {"memories":[]}
     def context(self):
         facts=[{"category":item["category"],"fact":item["fact"]} for item in self.list()][:30]
