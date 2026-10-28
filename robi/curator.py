@@ -21,6 +21,13 @@ def curate(proposals, memory, model="gemma3:4b",
     if not valid:
         return {"accepted":[],"rejected":[],"review":[]}
     existing=memory.list()
+    # Don't reconsider exactly the same fact/source already audited.
+    seen={(e["fact"].strip().casefold(),e["evidence"].strip().casefold())
+          for e in memory.curator_events(500)}
+    valid=[p for p in valid if (p["candidate"]["fact"].strip().casefold(),
+          p["candidate"]["evidence"].strip().casefold()) not in seen]
+    if not valid:
+        return {"accepted":[],"rejected":[],"review":[]}
     prompt=("Sei il responsabile indipendente della memoria di un assistente. "
             "Per ogni proposta, controlla SOLTANTO la fonte testuale dell'utente; "
             "non usare inferenze su altri messaggi. "
@@ -30,6 +37,7 @@ def curate(proposals, memory, model="gemma3:4b",
             "credenziali, dati finanziari, intimità, identificativi) o se incerto. "
             "confidence 0..1 indica sicurezza sulla fonte e utilità a lungo termine. "
             "Scarta dubbi, richieste momentanee, speculazioni, domande e ridondanze. "
+            "Una sola modifica di preferenza non dimostra cambiamenti frequenti. "
             "Confronta ogni proposta con tutti i ricordi esistenti. "
             "relation: independent, duplicate, conflict o update. "
             "related_id: ID del ricordo collegato, oppure 0. "
