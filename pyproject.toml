@@ -7,7 +7,7 @@ name = "robi-core"
 version = "0.4.6"
 description = "ROBI: desktop robot core and vision laboratory"
 requires-python = ">=3.11,<3.15"
-dependencies = ["opencv-python>=4.8,<5", "mediapipe>=0.10.14,<2"]
+dependencies = ["opencv-python>=4.8,<5", "mediapipe>=0.10.14,<2", "numpy>=1.26,<3"]
 
 [project.optional-dependencies]
 dev = ["pytest>=8,<10", "ruff>=0.7,<1"]
