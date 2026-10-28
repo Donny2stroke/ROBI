@@ -29,3 +29,25 @@ def test_five_distinct_explicit_facts_are_accepted():
         def __exit__(self,*args): pass
     with patch("robi.learning.urlopen",return_value=Response()):
         assert len(suggest_memories(history))==5
+
+
+def test_empty_model_output_falls_back_to_explicit_work_facts():
+    history=[
+        {"role":"user","content":"Conosci IBM? Io lavoro per questa azienda da 1 anno"},
+        {"role":"assistant","content":"Cosa fai lì?"},
+        {"role":"user","content":"sviluppo web per il cliente Campari"},
+        {"role":"user","content":"uso wordpress e gutenberg come principale tecnologia"},
+        {"role":"user","content":"Mi piacerebbe imparare meglio React"},
+    ]
+    class Response:
+        def __enter__(self):
+            return io.BytesIO(json.dumps({"message":{"content":'{"suggestions":[]}'}}).encode())
+        def __exit__(self,*args): pass
+    with patch("robi.learning.urlopen",return_value=Response()):
+        results=suggest_memories(history)
+    assert len(results)==4
+    assert any("IBM" in x["fact"] for x in results)
+    assert any("Campari" in x["fact"] for x in results)
+    assert any("gutenberg" in x["fact"] for x in results)
+    assert any("React" in x["fact"] for x in results)
+    assert all(x["evidence"] in [m["content"] for m in history if m["role"]=="user"] for x in results)
