@@ -31,7 +31,7 @@ class Core:
         self.blink_id = 0
         self.started = time.time()
         self.learning_lock = threading.RLock()
-        self.learning_state = {'status':'idle','proposals':[],'analyzed_turns':0,'step':'In attesa','events':[]}
+        self.learning_state = {'status':'idle','proposals':[],'analyzed_turns':0,'step':'In attesa','events':[],'started_at':None,'error':None}
         self.auto_learning = False
 
     def schedule_learning(self):
@@ -44,6 +44,8 @@ class Core:
             if self.learning_state["status"]=="running":
                 return
             self.learning_state["status"]="running"
+            self.learning_state["error"]=None
+            self.learning_state["started_at"]=time.time()
             self.learning_state["analyzed_turns"]=turns
         model=self.conversation.model
         def work():
@@ -63,15 +65,21 @@ class Core:
                 with self.learning_lock:
                     self.learning_state["proposals"]=proposals
                     self.learning_state["status"]="ready"
+                    self.learning_state["started_at"]=None
             except (OSError,TimeoutError,ValueError,KeyError,TypeError,RuntimeError) as exc:
                 with self.learning_lock:
                     self.learning_state["status"]="error"
+                    self.learning_state["step"]="Analisi interrotta: riproverò ai prossimi messaggi"
+                    self.learning_state["started_at"]=None
                     self.learning_state["error"]=str(exc)
         threading.Thread(target=work,daemon=True,name="robi-learning").start()
 
     def learning_snapshot(self):
         with self.learning_lock:
-            return {**self.learning_state,"enabled":self.auto_learning}
+            state={**self.learning_state,"enabled":self.auto_learning}
+            if state["status"]=="running" and state["started_at"] is not None:
+                state["elapsed_seconds"]=int(time.time()-state["started_at"])
+            return state
 
     def snapshot(self):
         camera = self.camera.status()
