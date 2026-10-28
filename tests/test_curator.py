@@ -17,7 +17,7 @@ def candidate(fact, action="add", target_id=None, category="preference"):
 
 def decision(index, accepted=True, sensitive=False, confidence=0.99, supported=True):
     return {"index":index,"decision":"accept" if accepted else "reject",
-            "confidence":confidence,"sensitive":sensitive,"supported":supported,"reason":"Controllo fonte"}
+            "confidence":confidence,"sensitive":sensitive,"supported":supported,"reason":"Controllo fonte","relation":"independent","related_id":0,"category":"preference"}
 
 def test_curator_accepts_only_high_confidence_and_audits(tmp_path):
     m=MemoryStore(tmp_path/"memory.sqlite3")
@@ -46,4 +46,26 @@ def test_curator_does_not_silently_update_existing_memory():
     outcome=curate([proposal],m,transport=lambda *_a,**_kw:FakeResponse([decision(0)]))
     assert len(outcome["review"])==1
     assert m.list()[0]["fact"]=="Preferisco il mare"
+    m.close()
+
+def test_curator_never_autosaves_conflicting_preference():
+    m=MemoryStore(":memory:")
+    old=m.add("preference","Il mio gelato preferito è il cioccolato")
+    proposed=candidate("Preferisco il pistacchio")
+    verdict=decision(0)
+    verdict.update({"relation":"conflict","related_id":old["id"]})
+    result=curate([proposed],m,transport=lambda *_a,**_kw:FakeResponse([verdict]))
+    assert not result["accepted"]
+    assert len(result["review"])==1
+    assert len(m.list())==1
+    m.close()
+
+def test_professional_fact_category_can_be_corrected_by_curator():
+    m=MemoryStore(":memory:")
+    proposed=candidate("Sono uno sviluppatore web",category="preference")
+    verdict=decision(0)
+    verdict.update({"category":"identity"})
+    result=curate([proposed],m,transport=lambda *_a,**_kw:FakeResponse([verdict]))
+    assert len(result["accepted"])==1
+    assert m.list()[0]["category"]=="identity"
     m.close()
