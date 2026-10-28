@@ -13,6 +13,7 @@ from .brain import Conversation, preload_model
 from .memory import MemoryStore
 from .learning import suggest_memories
 from .consolidation import propose_consolidation
+from .curator import curate
 
 STATIC = Path(__file__).parent / 'static'
 ALLOWED_STATES = {'idle','listening','thinking','speaking','curious','happy','sleepy'}
@@ -30,7 +31,8 @@ class Core:
         self.blink_id = 0
         self.started = time.time()
         self.learning_lock = threading.RLock()
-        self.learning_state = {'status':'idle','proposals':[],'analyzed_turns':0}
+        self.learning_state = {'status':'idle','proposals':[],'analyzed_turns':0,'step':'In attesa','events':[]}
+        self.auto_learning = False
 
     def schedule_learning(self):
         """Analisi locale dopo 3 nuovi messaggi; la chat rimane non bloccante."""
@@ -46,7 +48,18 @@ class Core:
         model=self.conversation.model
         def work():
             try:
+                with self.learning_lock:
+                    self.learning_state["step"]="Estrazione e confronto dei ricordi"
                 proposals=propose_consolidation(history,self.memory,model)
+                if self.auto_learning and proposals:
+                    with self.learning_lock:
+                        self.learning_state["step"]="Curatore AI: verifica fonti, utilità e sicurezza"
+                    results=curate(proposals,self.memory,model)
+                    events=self.memory.curator_events(20)
+                    with self.learning_lock:
+                        self.learning_state["events"]=events
+                        self.learning_state["step"]="Analisi completata: "+str(len(results["accepted"]))+" ricordi salvati"
+                    proposals=results["review"]
                 with self.learning_lock:
                     self.learning_state["proposals"]=proposals
                     self.learning_state["status"]="ready"
@@ -58,7 +71,7 @@ class Core:
 
     def learning_snapshot(self):
         with self.learning_lock:
-            return dict(self.learning_state)
+            return {**self.learning_state,"enabled":self.auto_learning}
 
     def snapshot(self):
         camera = self.camera.status()
@@ -130,6 +143,8 @@ class Handler(BaseHTTPRequestHandler):
         path = urlsplit(self.path).path
         if path == '/api/camera/stream.mjpg':
             return self.mjpeg_stream()
+        if path == '/api/learning/events':
+            return self.json_reply(200,{'events':core.memory.curator_events()})
         if path == '/api/learning/pending':
             return self.json_reply(200,core.learning_snapshot())
         if path == '/api/memory/map':
@@ -156,7 +171,7 @@ class Handler(BaseHTTPRequestHandler):
 
     def do_POST(self):
         path = urlsplit(self.path).path
-        if path not in ('/api/eyes','/api/camera/start','/api/camera/stop','/api/camera/config','/api/chat','/api/chat/clear','/api/chat/model','/api/memories','/api/memories/delete','/api/memories/clear','/api/memories/update','/api/learning/suggest','/api/learning/consolidate','/api/learning/ack'):
+        if path not in ('/api/eyes','/api/camera/start','/api/camera/stop','/api/camera/config','/api/chat','/api/chat/clear','/api/chat/model','/api/memories','/api/memories/delete','/api/memories/clear','/api/memories/update','/api/learning/suggest','/api/learning/consolidate','/api/learning/ack','/api/learning/mode'):
             return self.json_reply(404, {'error':'Risorsa non trovata.'})
         try:
             length = int(self.headers.get('Content-Length','0'))
@@ -164,7 +179,13 @@ class Handler(BaseHTTPRequestHandler):
                 return self.json_reply(413,{'error':'Richiesta troppo grande.'})
             raw = self.rfile.read(length)
             data = json.loads(raw) if raw else {}
-            if path == '/api/learning/ack':
+            if path == '/api/learning/mode':
+                if type(data.get('enabled')) is not bool:
+                    raise ValueError('enabled deve essere booleano.')
+                with core.learning_lock:
+                    core.auto_learning=data['enabled']
+                out={'enabled':core.auto_learning}
+            elif path == '/api/learning/ack':
                 with core.learning_lock:
                     core.learning_state['proposals']=[]
                     core.learning_state['status']='idle'
