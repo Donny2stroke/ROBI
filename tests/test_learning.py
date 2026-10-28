@@ -51,3 +51,9 @@ def test_empty_model_output_falls_back_to_explicit_work_facts():
     assert any("gutenberg" in x["fact"] for x in results)
     assert any("React" in x["fact"] for x in results)
     assert all(x["evidence"] in [m["content"] for m in history if m["role"]=="user"] for x in results)
+
+def test_fallback_normalizes_wordpress_gutenberg_campari():
+    from robi.learning import explicit_fallback
+    proposals=explicit_fallback(["si sviluppo in wordpress + gutenberg per Campari"])
+    assert proposals[0]["fact"]=="Utilizzo WordPress e Gutenberg per lo sviluppo web del cliente Campari"
+    assert proposals[0]["evidence"]=="si sviluppo in wordpress + gutenberg per Campari"
