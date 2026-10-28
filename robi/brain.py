@@ -87,7 +87,7 @@ class Conversation:
         try:
             user={"role":"user","content":message.strip()}
             payload={"model":self.model,"stream":False,"think":False,
-                     "messages":[{"role":"system","content":build_system_prompt()}, {"role":"system","content":user_facts_context(self._history)}, {"role":"system","content":self.memory.context() if self.memory else ""}]+self._history[-16:]+[user],
+                     "messages":[{"role":"system","content":build_system_prompt()}, {"role":"system","content":user_facts_context(self._history)}, {"role":"system","content":self.memory.relevant_context(message) if self.memory else ""}]+self._history[-16:]+[user],
                      "options":{"num_ctx":4096,"num_predict":350},
                      "format":{"type":"object","properties":{"reply":{"type":"string"}},"required":["reply"],"additionalProperties":False}}
             request=Request(self.endpoint,data=json.dumps(payload).encode("utf-8"),
