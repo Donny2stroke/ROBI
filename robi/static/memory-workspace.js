@@ -98,6 +98,7 @@
     const confirm=document.createElement('button');confirm.textContent=p.action==='update'?'Conferma modifica':'Conferma salvataggio';
     confirm.disabled=p.action==='duplicate';
     confirm.onclick=async()=>{
+     if(!input.value.trim()){status.textContent='Il ricordo non può essere vuoto.';return;}
      try{if(p.action==='update')await send('/api/memories/update',{id:p.target_id,category:p.candidate.category,fact:input.value});
       else await send('/api/memories',{category:p.candidate.category,fact:input.value});
       card.remove();await window.refreshMemories();}
