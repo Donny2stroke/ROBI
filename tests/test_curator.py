@@ -69,3 +69,21 @@ def test_professional_fact_category_can_be_corrected_by_curator():
     assert len(result["accepted"])==1
     assert m.list()[0]["category"]=="identity"
     m.close()
+
+def test_learning_turn_count_not_limited_by_chat_window():
+    import threading
+    from unittest.mock import patch
+    from robi.server import Core
+    obj=object.__new__(Core)
+    obj.conversation=type("C",(),{"model":"gemma3:4b","history":lambda self: []})()
+    obj.learning_lock=threading.RLock()
+    obj.learning_state={"status":"idle","proposals":[],"analyzed_turns":0,
+        "step":"In attesa","events":[],"started_at":None,"error":None}
+    obj.auto_learning=True
+    obj.total_user_turns=0
+    with patch("robi.server.threading.Thread"):
+        for _ in range(6):
+            obj.learning_state["status"]="idle"
+            obj.schedule_learning()
+    assert obj.total_user_turns==6
+    assert obj.learning_state["analyzed_turns"]==6
