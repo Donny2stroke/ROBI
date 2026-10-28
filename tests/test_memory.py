@@ -56,3 +56,13 @@ def test_search_handles_punctuation_and_unicode_words():
     assert any("caffè" in x["fact"] for x in m.search("Ti piace il caffè?"))
     assert not m.search("??!!")
     m.close()
+
+def test_topic_followup_and_style_context():
+    m=MemoryStore(":memory:")
+    m.add("preference","Mi piace il gelato al pistacchio")
+    m.add("interaction","Preferisco risposte naturali")
+    ctx=m.relevant_context("Quale gusto di gelato mi piace? Ti ricordi se preferisco la vaniglia?")
+    assert "gelato al pistacchio" in ctx
+    assert "non citarli" in ctx
+    assert m.search("Ti ricordi se preferisco la vaniglia?")==[]
+    m.close()
