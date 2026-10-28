@@ -45,6 +45,7 @@ class MemoryStore:
                 raise ValueError("Ricordo inesistente.")
             self.db.execute("UPDATE memories SET category=?,fact=?,note=?,updated_at=CURRENT_TIMESTAMP WHERE id=?",
                             (category,fact.strip(),note.strip(),memory_id))
+            self.db.execute("DELETE FROM memory_vectors WHERE memory_id=?",(memory_id,))
         return {"id":memory_id,"category":category,"fact":fact.strip(),"note":note.strip()}
     def search(self, query, limit=8):
         """Ricerca testuale locale: recupera solo ricordi con termini corrispondenti."""
