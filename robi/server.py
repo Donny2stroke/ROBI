@@ -9,7 +9,7 @@ import time
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from urllib.parse import urlsplit
 from .camera import CameraService
-from .brain import Conversation
+from .brain import Conversation, preload_model
 from .memory import MemoryStore
 from .learning import suggest_memories
 
@@ -174,6 +174,13 @@ def main():
     server = ThreadingHTTPServer(('127.0.0.1',args.port), Handler)
     print(f'ROBI Core v0.4.5 | http://127.0.0.1:{args.port}',flush=True)
     print('Premi CTRL+C per fermare il server.',flush=True)
+    def warmup():
+        try:
+            preload_model(core.conversation.model,core.conversation.endpoint)
+            print('ROBI AI: modello pronto.',flush=True)
+        except (OSError, TimeoutError, ValueError, KeyError) as exc:
+            print(f'ROBI AI: preload non riuscito ({exc}); caricamento alla prima richiesta.',flush=True)
+    threading.Thread(target=warmup,name='robi-ollama-warmup',daemon=True).start()
     try:
         server.serve_forever()
     except KeyboardInterrupt:
