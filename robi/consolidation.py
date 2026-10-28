@@ -48,7 +48,7 @@ def propose_consolidation(history, memory, model="gemma3:4b", endpoint="http://1
                  "existing":existing[-100:]},ensure_ascii=False)}],
              "options":{"num_ctx":4096,"num_predict":450}}
     request=Request(endpoint,data=json.dumps(payload).encode(),headers={"Content-Type":"application/json"},method="POST")
-    with transport(request,timeout=90) as response:
+    with transport(request,timeout=45) as response:
         decisions=json.loads(json.load(response)["message"]["content"]).get("decisions",[])
     decisions_by_index={d.get("index"):d for d in decisions if isinstance(d,dict) and type(d.get("index")) is int}
     for i,c in undecided:
