@@ -18,3 +18,14 @@ def test_suggestions_require_exact_user_evidence():
 
 def test_no_user_messages_no_request():
     assert suggest_memories([{"role":"assistant","content":"Ciao"}])==[]
+
+
+def test_five_distinct_explicit_facts_are_accepted():
+    history=[{"role":"user","content":"fact "+str(i)} for i in range(5)]
+    candidates=[{"category":"identity","fact":"fact "+str(i),"evidence":"fact "+str(i)} for i in range(5)]
+    class Response:
+        def __enter__(self):
+            return io.BytesIO(json.dumps({"message":{"content":json.dumps({"suggestions":candidates})}}).encode())
+        def __exit__(self,*args): pass
+    with patch("robi.learning.urlopen",return_value=Response()):
+        assert len(suggest_memories(history))==5
