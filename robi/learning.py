@@ -35,4 +35,25 @@ def suggest_memories(history, model="gemma3:4b", endpoint="http://127.0.0.1:1143
             or not any(evidence in msg for msg in user_messages)):
             continue
         output.append({"category":category,"fact":fact.strip(),"evidence":evidence})
-    return output
+    if output:
+        return output
+    return explicit_fallback(user_messages)
+
+
+def explicit_fallback(messages):
+    """Conservativo: propone il testo letterale delle dichiarazioni esplicite."""
+    import re
+    patterns=[
+        ("identity", r"\b(?:lavoro|sviluppo|utilizzo|uso|mi occupo)\b"),
+        ("preference", r"\b(?:mi piacerebbe|vorrei imparare|preferisco|mi piace)\b"),
+    ]
+    suggestions=[]
+    for message in messages:
+        value=message.strip()
+        if not 8<=len(value)<=300:
+            continue
+        for category,pattern in patterns:
+            if re.search(pattern,value,re.IGNORECASE):
+                suggestions.append({"category":category,"fact":value,"evidence":message})
+                break
+    return suggestions[-5:]
