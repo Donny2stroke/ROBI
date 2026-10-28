@@ -19,7 +19,7 @@
     const state=await response.json();
     if(document.activeElement!==toggle)toggle.checked=!!state.enabled;
     const label=state.status==='running'?'Analisi della memoria in corso · '+(state.elapsed_seconds||0)+'s':state.status==='error'?'Memoria AI · Analisi non riuscita':
-      state.enabled?'Memoria AI · '+(state.step||'Pronta'):'Memoria AI · Modalità manuale';
+      state.enabled?'Memoria AI · Prossima analisi al messaggio '+(state.next_analysis_turn||3)+' (attuale '+(state.total_user_turns||0)+')':'Memoria AI · Modalità manuale';
     summary.textContent=label;
     if(state.status==='running')details.textContent=(state.step||'ROBI sta analizzando...')+'\nTempo trascorso: '+(state.elapsed_seconds||0)+' secondi';
     else if(state.status==='error')details.textContent='Analisi non completata: '+(state.error||'Ollama non disponibile')+'\nNessun dato è stato salvato da questo ciclo.';
@@ -28,10 +28,10 @@
       const signature=JSON.stringify(events);
       if(signature!==lastSequence){
        lastSequence=signature;
-       details.textContent=events.length?events.slice(0,8).map(e=>
+       details.textContent='Ultime decisioni archiviate (non un processo in corso):\n\n'+(events.length?events.slice(0,8).map(e=>
         (e.outcome==='accepted'?'Salvato':e.outcome==='rejected'?'Ignorato':'Da verificare')
         +' · '+e.fact+'\nFonte: '+e.evidence+'\nMotivo: '+e.reason).join('\n\n')
-         :'Nessuna decisione ancora registrata.';
+         :'Nessuna decisione ancora registrata.');
        if(events.some(e=>e.outcome==='accepted')&&typeof window.refreshMemories==='function')
          window.refreshMemories();
       }
