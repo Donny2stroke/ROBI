@@ -33,11 +33,14 @@ class Core:
         self.learning_lock = threading.RLock()
         self.learning_state = {'status':'idle','proposals':[],'analyzed_turns':0,'step':'In attesa','events':[],'started_at':None,'error':None}
         self.auto_learning = False
+        self.total_user_turns = 0
 
     def schedule_learning(self):
         """Analisi locale dopo 3 nuovi messaggi; la chat rimane non bloccante."""
         history=self.conversation.history()
-        turns=sum(m.get("role")=="user" for m in history)
+        with self.learning_lock:
+            self.total_user_turns += 1
+            turns = self.total_user_turns
         with self.learning_lock:
             if turns<3 or turns-self.learning_state["analyzed_turns"]<3:
                 return
@@ -76,7 +79,9 @@ class Core:
 
     def learning_snapshot(self):
         with self.learning_lock:
-            state={**self.learning_state,"enabled":self.auto_learning}
+            state={**self.learning_state,"enabled":self.auto_learning,
+                   "total_user_turns":self.total_user_turns,
+                   "next_analysis_turn":self.learning_state["analyzed_turns"]+3}
             if state["status"]=="running" and state["started_at"] is not None:
                 state["elapsed_seconds"]=int(time.time()-state["started_at"])
             return state
