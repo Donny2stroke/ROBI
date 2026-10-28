@@ -12,6 +12,7 @@ from .camera import CameraService
 from .brain import Conversation
 from .memory import MemoryStore
 from .learning import suggest_memories
+from .evaluation import evaluate
 
 STATIC = Path(__file__).parent / 'static'
 ALLOWED_STATES = {'idle','listening','thinking','speaking','curious','happy','sleepy'}
@@ -33,7 +34,7 @@ class Core:
         camera = self.camera.status()
         with self.lock:
             x, y = (camera['gaze_x'], camera['gaze_y']) if self.camera_tracking and camera['active'] else (self.gaze_x,self.gaze_y)
-            return {'version':'0.4.3','state':self.state,'gaze_x':x,'gaze_y':y,
+            return {'version':'0.4.4','state':self.state,'gaze_x':x,'gaze_y':y,
                     'camera_tracking':self.camera_tracking,'blink_id':self.blink_id,
                     'camera':camera,'uptime_seconds':int(time.time()-self.started)}
 
@@ -121,7 +122,7 @@ class Handler(BaseHTTPRequestHandler):
 
     def do_POST(self):
         path = urlsplit(self.path).path
-        if path not in ('/api/eyes','/api/camera/start','/api/camera/stop','/api/camera/config','/api/chat','/api/chat/clear','/api/chat/model','/api/memories','/api/memories/delete','/api/memories/clear','/api/learning/suggest'):
+        if path not in ('/api/eyes','/api/camera/start','/api/camera/stop','/api/camera/config','/api/chat','/api/chat/clear','/api/chat/model','/api/memories','/api/memories/delete','/api/memories/clear','/api/learning/suggest','/api/evaluation/run'):
             return self.json_reply(404, {'error':'Risorsa non trovata.'})
         try:
             length = int(self.headers.get('Content-Length','0'))
@@ -129,7 +130,9 @@ class Handler(BaseHTTPRequestHandler):
                 return self.json_reply(413,{'error':'Richiesta troppo grande.'})
             raw = self.rfile.read(length)
             data = json.loads(raw) if raw else {}
-            if path == '/api/learning/suggest':
+            if path == '/api/evaluation/run':
+                out = evaluate(core.conversation.history(),core.conversation.model)
+            elif path == '/api/learning/suggest':
                 out = {'suggestions':suggest_memories(core.conversation.history(),core.conversation.model)}
             elif path == '/api/memories':
                 out = core.memory.add(data.get('category'),data.get('fact'))
@@ -170,7 +173,7 @@ def main():
     parser.add_argument('--port',type=int,default=8765)
     args = parser.parse_args()
     server = ThreadingHTTPServer(('127.0.0.1',args.port), Handler)
-    print(f'ROBI Core v0.4.3 | http://127.0.0.1:{args.port}',flush=True)
+    print(f'ROBI Core v0.4.4 | http://127.0.0.1:{args.port}',flush=True)
     print('Premi CTRL+C per fermare il server.',flush=True)
     try:
         server.serve_forever()
