@@ -123,3 +123,27 @@ def test_vector_cache_is_invalidated_after_edit():
     m.retrieve("Python")
     assert len(embedder.calls[-1])==2
     m.close()
+
+def test_revised_preference_survives_restart_without_stale_vector(tmp_path):
+    path=tmp_path/"smart.sqlite3"
+    first=MemoryStore(path,embedder=FakeEmbeddingClient())
+    saved=first.add("preference","Mi piace il gelato al pistacchio")
+    first.retrieve("Che gelato mi consigli?")
+    first.update(saved["id"],"preference","Mi piace il gelato al cioccolato")
+    assert first.db.execute("SELECT count(*) FROM memory_vectors WHERE memory_id=?",(saved["id"],)).fetchone()[0]==0
+    first.close()
+
+    second=MemoryStore(path,embedder=FakeEmbeddingClient())
+    context=second.relevant_context("Quale gusto di gelato preferisco?")
+    assert "cioccolato" in context
+    assert "pistacchio" not in context
+    second.close()
+
+def test_delete_clears_persisted_vector():
+    m=MemoryStore(":memory:",embedder=FakeEmbeddingClient())
+    item=m.add("preference","Mi piace il gelato al pistacchio")
+    m.retrieve("gelato")
+    assert m.db.execute("SELECT count(*) FROM memory_vectors").fetchone()[0]==1
+    m.delete(item["id"])
+    assert m.db.execute("SELECT count(*) FROM memory_vectors").fetchone()[0]==0
+    m.close()
