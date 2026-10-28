@@ -87,3 +87,16 @@ def test_learning_turn_count_not_limited_by_chat_window():
             obj.schedule_learning()
     assert obj.total_user_turns==6
     assert obj.learning_state["analyzed_turns"]==6
+
+def test_curator_does_not_repeat_same_review_on_later_round():
+    m=MemoryStore(":memory:")
+    p=candidate("Adesso preferisco il pistacchio")
+    old=m.add("preference","Preferisco il cioccolato")
+    verdict=decision(0)
+    verdict.update({"relation":"conflict","related_id":old["id"]})
+    first=curate([p],m,transport=lambda *_a,**_kw:FakeResponse([verdict]))
+    assert len(first["review"])==1
+    second=curate([p],m,transport=lambda *_a,**_kw:(_ for _ in ()).throw(AssertionError("No repeat AI call")))
+    assert second["review"]==[]
+    assert len(m.curator_events())==1
+    m.close()
