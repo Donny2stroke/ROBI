@@ -63,9 +63,22 @@ class MemoryStore:
         return [row for _,_,row in ranked[:limit]]
     def relevant_context(self, query):
         """Identità e regole d'interazione sempre disponibili; preferenze pertinenti filtrate."""
-        selected=[m for m in self.list() if m["category"] in ("identity","interaction")]
-        selected.extend(m for m in self.search(query) if m["id"] not in {x["id"] for x in selected})
-        selected=selected[:12]
+        all_memories=self.list()
+        # Per raccolte piccole è più sicuro recuperare tutto: il filtro lessicale
+        # non riconosce sinonimi ("gusto" vs "pistacchio") e non deve nascondere fatti.
+        if len(all_memories)<=20:
+            selected=all_memories
+        else:
+            # Riserviamo posti ai fatti personali pertinenti, evitando che molte
+            # regole di stile occupino tutti i 12 slot.
+            personal=[item for item in self.search(query,limit=10)
+                      if item["category"]!="interaction"]
+            identities=[item for item in all_memories if item["category"]=="identity"]
+            style=[item for item in all_memories if item["category"]=="interaction"]
+            selected=[]
+            for item in personal[:8]+identities[:2]+style[:2]:
+                if item["id"] not in {x["id"] for x in selected}:
+                    selected.append(item)
         if not selected:
             return ""
         facts=[{"category":m["category"],"fact":m["fact"]} for m in selected]
