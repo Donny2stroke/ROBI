@@ -48,7 +48,7 @@ class MemoryStore:
         import re
         if not isinstance(query,str):
             raise ValueError("Ricerca non valida.")
-        terms=set(re.findall(r"[^\\W_]{4,}",query.casefold(),re.UNICODE))
+        terms=set(re.findall(r"[^\W_]{4,}",query.casefold(),re.UNICODE))
         if not terms:
             return []
         rows=self.list()
