@@ -156,7 +156,7 @@ class Handler(BaseHTTPRequestHandler):
 
     def do_POST(self):
         path = urlsplit(self.path).path
-        if path not in ('/api/eyes','/api/camera/start','/api/camera/stop','/api/camera/config','/api/chat','/api/chat/clear','/api/chat/model','/api/memories','/api/memories/delete','/api/memories/clear','/api/memories/update','/api/learning/suggest','/api/learning/consolidate'):
+        if path not in ('/api/eyes','/api/camera/start','/api/camera/stop','/api/camera/config','/api/chat','/api/chat/clear','/api/chat/model','/api/memories','/api/memories/delete','/api/memories/clear','/api/memories/update','/api/learning/suggest','/api/learning/consolidate','/api/learning/ack'):
             return self.json_reply(404, {'error':'Risorsa non trovata.'})
         try:
             length = int(self.headers.get('Content-Length','0'))
@@ -164,7 +164,12 @@ class Handler(BaseHTTPRequestHandler):
                 return self.json_reply(413,{'error':'Richiesta troppo grande.'})
             raw = self.rfile.read(length)
             data = json.loads(raw) if raw else {}
-            if path == '/api/learning/consolidate':
+            if path == '/api/learning/ack':
+                with core.learning_lock:
+                    core.learning_state['proposals']=[]
+                    core.learning_state['status']='idle'
+                out={'acknowledged':True}
+            elif path == '/api/learning/consolidate':
                 out = {'proposals':propose_consolidation(core.conversation.history(),core.memory,core.conversation.model)}
             elif path == '/api/learning/suggest':
                 out = {'suggestions':suggest_memories(core.conversation.history(),core.conversation.model)}
