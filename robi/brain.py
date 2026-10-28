@@ -11,7 +11,7 @@ def clean_answer(content: str) -> str:
     """Non pubblicare testo deliberativo invece della risposta finale."""
     import re
     value = re.sub(r"<think>.*?</think>", "", content, flags=re.IGNORECASE | re.DOTALL).strip()
-    lower = value.casefold()
+    # Gemma 3 può occasionalmente emettere marker multimodali come testo.\n    value = re.sub(r"<(?:start_of_image|end_of_image|image)>", " ", value, flags=re.IGNORECASE)\n    value = re.sub(r"\\s{2,}", " ", value).strip()\n    lower = value.casefold()
     if (not value or "<think>" in lower or "thinking..." in lower
             or lower.startswith(("okay, the user", "the user said", "let me think",
                                  "i need to respond", "first, i should"))):
