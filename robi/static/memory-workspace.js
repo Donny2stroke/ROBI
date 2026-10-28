@@ -87,13 +87,10 @@
  });
  $('mapReset').onclick=()=>{zoom=1;panX=panY=0;draw()};
  $('mapRefresh').onclick=refreshMap;
- $('consolidateMemories').onclick=async()=>{
-  const status=$('consolidationStatus'),list=$('consolidationItems'),button=$('consolidateMemories');
-  button.disabled=true;list.replaceChildren();status.textContent='Analisi della conversazione...';
-  try{
-   const result=await send('/api/learning/consolidate');
-   status.textContent=(result.proposals||[]).length+' proposte. Nessuna modifica avviene senza conferma.';
-   for(const p of result.proposals||[]){
+ function displayProposals(proposals){
+  const list=$('consolidationItems'),status=$('consolidationStatus');
+  list.replaceChildren();
+   for(const p of proposals){
     const card=document.createElement('div');card.className='memory-card';
     const title=document.createElement('b');title.textContent=p.action==='update'?'Aggiorna ricordo #'+p.target_id:p.action==='duplicate'?'Duplicato già presente':'Nuovo ricordo';
     const input=document.createElement('input');input.value=p.candidate.fact;input.maxLength=300;input.className='memory-input';
@@ -109,6 +106,36 @@
     const skip=document.createElement('button');skip.textContent='Scarta';skip.onclick=()=>card.remove();
     card.append(title,input,rationale,confirm,skip);list.append(card);
    }
+ }
+ let lastAutoTurn=0;
+ async function pollLearning(){
+  try{
+   const response=await fetch('/api/learning/pending',{cache:'no-store'});
+   if(!response.ok)return;
+   const state=await response.json();
+   const badge=$('autoLearningStatus');
+   if(state.status==='running')badge.textContent='ROBI sta cercando informazioni utili...';
+   else if(state.status==='ready'&&state.proposals.length){
+    badge.textContent=state.proposals.length+' proposte di memoria disponibili';
+    if(state.analyzed_turns!==lastAutoTurn){
+     lastAutoTurn=state.analyzed_turns;
+     displayProposals(state.proposals);
+     $('consolidationStatus').textContent='Proposte automatiche da controllare. Nessuna è stata salvata.';
+     await send('/api/learning/ack');
+    }
+   }else if(state.status==='error')badge.textContent='Analisi automatica non disponibile; puoi riprovare manualmente.';
+   else badge.textContent='Analisi automatica dopo ogni 3 messaggi utente.';
+  }catch(_error){}
+ }
+ setInterval(pollLearning,5000);
+ pollLearning();
+ $('consolidateMemories').onclick=async()=>{
+  const status=$('consolidationStatus'),list=$('consolidationItems'),button=$('consolidateMemories');
+  button.disabled=true;list.replaceChildren();status.textContent='Analisi della conversazione...';
+  try{
+   const result=await send('/api/learning/consolidate');
+   status.textContent=(result.proposals||[]).length+' proposte. Nessuna modifica avviene senza conferma.';
+   displayProposals(result.proposals||[]);
   }catch(error){status.textContent=error.message}finally{button.disabled=false}
  };
  refresh();refreshMap();
