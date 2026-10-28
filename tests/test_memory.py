@@ -63,7 +63,7 @@ def test_topic_followup_and_style_context():
     m.add("interaction","Preferisco risposte naturali")
     ctx=m.relevant_context("Quale gusto di gelato mi piace? Ti ricordi se preferisco la vaniglia?")
     assert "gelato al pistacchio" in ctx
-    assert "non citarli" in ctx
+    assert "interaction regolano soltanto lo stile" in ctx
     assert m.search("Ti ricordi se preferisco la vaniglia?")==[]
     m.close()
 
