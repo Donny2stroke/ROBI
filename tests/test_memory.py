@@ -38,14 +38,14 @@ def test_update_and_reopen_old_schema(tmp_path):
     m.close()
 
 def test_relevant_context_filters_unrelated_preferences():
-    m=MemoryStore(":memory:")
+    m=MemoryStore(":memory:",embedder=FakeEmbeddingClient())
     m.add("preference","Mi piace il gelato al pistacchio")
     m.add("preference","Adoro programmare in Python")
     m.add("interaction","Preferisco risposte dirette")
     ctx=m.relevant_context("Come funziona Python?")
     assert "Python" in ctx
     assert "risposte dirette" in ctx
-    assert "pistacchio" in ctx  # fallback senza embeddings: privilegia recall
+    assert "pistacchio" not in ctx  # embedding: esclude temi non pertinenti
     m.close()
 
 def test_search_handles_punctuation_and_unicode_words():
@@ -102,4 +102,24 @@ def test_hybrid_fallback_when_embedding_server_missing():
     m=MemoryStore(":memory:",embedder=Offline())
     m.add("preference","Il mio gusto preferito è pistacchio")
     assert "pistacchio" in m.relevant_context("Quale gelato ti piace?")
+    m.close()
+
+def test_vector_cache_is_invalidated_after_edit():
+    class Counting:
+        model="fake"
+        def __init__(self):
+            self.calls=[]
+        def embed(self,texts):
+            self.calls.append(list(texts))
+            return [[float("pistacchio" in text.lower()),float("python" in text.lower()),1.0] for text in texts]
+    embedder=Counting()
+    m=MemoryStore(":memory:",embedder=embedder)
+    item=m.add("preference","Mi piace il pistacchio")
+    m.retrieve("pistacchio")
+    assert len(embedder.calls[-1])==2
+    m.retrieve("pistacchio")
+    assert len(embedder.calls[-1])==1
+    m.update(item["id"],"preference","Mi piace Python")
+    m.retrieve("Python")
+    assert len(embedder.calls[-1])==2
     m.close()
