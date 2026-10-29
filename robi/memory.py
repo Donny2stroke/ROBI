@@ -30,6 +30,28 @@ class MemoryStore:
             if "note" not in cols:
                 self.db.execute("ALTER TABLE memories ADD COLUMN note TEXT NOT NULL DEFAULT ''")
             self.db.execute("CREATE TABLE IF NOT EXISTS memory_vectors (memory_id INTEGER PRIMARY KEY, fact TEXT NOT NULL, model TEXT NOT NULL, vector TEXT NOT NULL)")
+    def record_curator_event(self, outcome, proposal, verdict):
+        """Audit: decisions and sources, never hidden weight modifications."""
+        with self.lock, self.db:
+            self.db.execute("""CREATE TABLE IF NOT EXISTS curator_events (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                outcome TEXT NOT NULL, fact TEXT NOT NULL, evidence TEXT NOT NULL,
+                reason TEXT NOT NULL, saved_id INTEGER, created_at TEXT DEFAULT CURRENT_TIMESTAMP)""")
+            self.db.execute(
+                "INSERT INTO curator_events(outcome,fact,evidence,reason,saved_id) VALUES(?,?,?,?,?)",
+                (outcome, proposal["candidate"]["fact"][:300],
+                 proposal["candidate"]["evidence"][:2000],
+                 str(verdict.get("reason",""))[:500],proposal.get("saved_id")))
+
+    def curator_events(self, limit=30):
+        with self.lock:
+            self.db.execute("""CREATE TABLE IF NOT EXISTS curator_events (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                outcome TEXT NOT NULL, fact TEXT NOT NULL, evidence TEXT NOT NULL,
+                reason TEXT NOT NULL, saved_id INTEGER, created_at TEXT DEFAULT CURRENT_TIMESTAMP)""")
+            rows=self.db.execute("SELECT outcome,fact,evidence,reason,saved_id,created_at FROM curator_events ORDER BY id DESC LIMIT ?",(limit,)).fetchall()
+        return [dict(zip(("outcome","fact","evidence","reason","saved_id","created_at"),r)) for r in rows]
+
     def update(self, memory_id, category, fact, note=""):
         if type(memory_id) is not int or memory_id < 1:
             raise ValueError("ID ricordo non valido.")
@@ -115,6 +137,46 @@ class MemoryStore:
         return ("Ricordi confermati: i fatti servono per rispondere; i ricordi interaction "
                 "regolano soltanto lo stile e non vanno citati come fatti. "
                 "Le correzioni recenti prevalgono. JSON: "+json.dumps(data,ensure_ascii=False))
+    def vector_map(self, max_points=200):
+        """Proiezione PCA 2D dei vettori già indicizzati, senza generare nuovi embedding."""
+        import numpy as np
+        with self.lock:
+            rows=self.db.execute(
+                "SELECT m.id,m.category,m.fact,v.model,v.vector FROM memory_vectors v "
+                "JOIN memories m ON m.id=v.memory_id AND m.fact=v.fact "
+                "ORDER BY m.id LIMIT ?",(max_points,)).fetchall()
+        valid=[]
+        for mid,category,fact,model,encoded in rows:
+            try:
+                vec=np.asarray(json.loads(encoded),dtype=float)
+                if vec.ndim==1 and vec.size>=2 and np.all(np.isfinite(vec)):
+                    valid.append((mid,category,fact,model,vec))
+            except (ValueError,TypeError):
+                continue
+        if not valid:
+            return {"points":[],"indexed":0,"total":len(self.list()),"method":"PCA"}
+        # Non combinare modelli embedding differenti o dimensioni incompatibili.
+        target_model=valid[0][3]
+        dim=valid[0][4].size
+        valid=[row for row in valid if row[3]==target_model and row[4].size==dim]
+        vectors=np.stack([row[4] for row in valid])
+        centered=vectors-vectors.mean(axis=0)
+        if len(valid)>1:
+            u,singular,_=np.linalg.svd(centered,full_matrices=False)
+            coordinates=u[:,:2]*singular[:2]
+        else:
+            coordinates=np.zeros((1,2))
+        if coordinates.shape[1]==1:
+            coordinates=np.pad(coordinates,((0,0),(0,1)))
+        scale=np.max(np.abs(coordinates),axis=0)
+        scale[scale==0]=1
+        coordinates=coordinates/scale
+        points=[{"id":row[0],"category":row[1],"fact":row[2],
+                 "x":round(float(x),5),"y":round(float(y),5)}
+                for row,(x,y) in zip(valid,coordinates)]
+        return {"points":points,"indexed":len(points),"total":len(self.list()),
+                "model":target_model,"method":"PCA"}
+
     def list(self):
         with self.lock:
             rows=self.db.execute("SELECT id,category,fact,source,created_at FROM memories ORDER BY id").fetchall()

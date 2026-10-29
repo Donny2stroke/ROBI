@@ -12,6 +12,8 @@ from .camera import CameraService
 from .brain import Conversation, preload_model
 from .memory import MemoryStore
 from .learning import suggest_memories
+from .consolidation import propose_consolidation
+from .curator import curate
 
 STATIC = Path(__file__).parent / 'static'
 ALLOWED_STATES = {'idle','listening','thinking','speaking','curious','happy','sleepy'}
@@ -28,12 +30,67 @@ class Core:
         self.camera_tracking = False
         self.blink_id = 0
         self.started = time.time()
+        self.learning_lock = threading.RLock()
+        self.learning_state = {'status':'idle','proposals':[],'analyzed_turns':0,'step':'In attesa','events':[],'started_at':None,'error':None}
+        self.auto_learning = False
+        self.total_user_turns = 0
+
+    def schedule_learning(self):
+        """Analisi locale dopo 3 nuovi messaggi; la chat rimane non bloccante."""
+        history=self.conversation.history()
+        with self.learning_lock:
+            self.total_user_turns += 1
+            turns = self.total_user_turns
+        with self.learning_lock:
+            if turns<3 or turns-self.learning_state["analyzed_turns"]<3:
+                return
+            if self.learning_state["status"]=="running":
+                return
+            self.learning_state["status"]="running"
+            self.learning_state["error"]=None
+            self.learning_state["started_at"]=time.time()
+            self.learning_state["analyzed_turns"]=turns
+        model=self.conversation.model
+        def work():
+            try:
+                with self.learning_lock:
+                    self.learning_state["step"]="Estrazione e confronto dei ricordi"
+                proposals=propose_consolidation(history,self.memory,model)
+                if self.auto_learning and proposals:
+                    with self.learning_lock:
+                        self.learning_state["step"]="Curatore AI: verifica fonti, utilità e sicurezza"
+                    results=curate(proposals,self.memory,model)
+                    events=self.memory.curator_events(20)
+                    with self.learning_lock:
+                        self.learning_state["events"]=events
+                        self.learning_state["step"]="Analisi completata: "+str(len(results["accepted"]))+" ricordi salvati"
+                    proposals=results["review"]
+                with self.learning_lock:
+                    self.learning_state["proposals"]=proposals
+                    self.learning_state["status"]="ready"
+                    self.learning_state["started_at"]=None
+            except (OSError,TimeoutError,ValueError,KeyError,TypeError,RuntimeError) as exc:
+                with self.learning_lock:
+                    self.learning_state["status"]="error"
+                    self.learning_state["step"]="Analisi interrotta: riproverò ai prossimi messaggi"
+                    self.learning_state["started_at"]=None
+                    self.learning_state["error"]=str(exc)
+        threading.Thread(target=work,daemon=True,name="robi-learning").start()
+
+    def learning_snapshot(self):
+        with self.learning_lock:
+            state={**self.learning_state,"enabled":self.auto_learning,
+                   "total_user_turns":self.total_user_turns,
+                   "next_analysis_turn":self.learning_state["analyzed_turns"]+3}
+            if state["status"]=="running" and state["started_at"] is not None:
+                state["elapsed_seconds"]=int(time.time()-state["started_at"])
+            return state
 
     def snapshot(self):
         camera = self.camera.status()
         with self.lock:
             x, y = (camera['gaze_x'], camera['gaze_y']) if self.camera_tracking and camera['active'] else (self.gaze_x,self.gaze_y)
-            return {'version':'0.4.5','state':self.state,'gaze_x':x,'gaze_y':y,
+            return {'version':'0.4.6','state':self.state,'gaze_x':x,'gaze_y':y,
                     'camera_tracking':self.camera_tracking,'blink_id':self.blink_id,
                     'camera':camera,'uptime_seconds':int(time.time()-self.started)}
 
@@ -99,6 +156,12 @@ class Handler(BaseHTTPRequestHandler):
         path = urlsplit(self.path).path
         if path == '/api/camera/stream.mjpg':
             return self.mjpeg_stream()
+        if path == '/api/learning/events':
+            return self.json_reply(200,{'events':core.memory.curator_events()})
+        if path == '/api/learning/pending':
+            return self.json_reply(200,core.learning_snapshot())
+        if path == '/api/memory/map':
+            return self.json_reply(200,core.memory.vector_map())
         if path == '/api/memories':
             return self.json_reply(200,{'memories':core.memory.list()})
         if path == '/api/chat/model':
@@ -113,15 +176,15 @@ class Handler(BaseHTTPRequestHandler):
                 return self.json_reply(404,{'error':'Nessun fotogramma disponibile.'})
             return self.reply(200,frame,'image/jpeg')
         path = '/index.html' if path == '/' else path
-        allowed = {'/index.html','/eyes.html'}
+        allowed = {'/index.html','/eyes.html','/memory-workspace.js','/auto-learning.js'}
         if path not in allowed:
             return self.json_reply(404, {'error':'Risorsa non trovata.'})
         data = (STATIC / path.lstrip('/')).read_bytes()
-        return self.reply(200,data,'text/html; charset=utf-8')
+        return self.reply(200,data,'application/javascript; charset=utf-8' if path.endswith('.js') else 'text/html; charset=utf-8')
 
     def do_POST(self):
         path = urlsplit(self.path).path
-        if path not in ('/api/eyes','/api/camera/start','/api/camera/stop','/api/camera/config','/api/chat','/api/chat/clear','/api/chat/model','/api/memories','/api/memories/delete','/api/memories/clear','/api/memories/update','/api/learning/suggest'):
+        if path not in ('/api/eyes','/api/camera/start','/api/camera/stop','/api/camera/config','/api/chat','/api/chat/clear','/api/chat/model','/api/memories','/api/memories/delete','/api/memories/clear','/api/memories/update','/api/learning/suggest','/api/learning/consolidate','/api/learning/ack','/api/learning/mode'):
             return self.json_reply(404, {'error':'Risorsa non trovata.'})
         try:
             length = int(self.headers.get('Content-Length','0'))
@@ -129,7 +192,20 @@ class Handler(BaseHTTPRequestHandler):
                 return self.json_reply(413,{'error':'Richiesta troppo grande.'})
             raw = self.rfile.read(length)
             data = json.loads(raw) if raw else {}
-            if path == '/api/learning/suggest':
+            if path == '/api/learning/mode':
+                if type(data.get('enabled')) is not bool:
+                    raise ValueError('enabled deve essere booleano.')
+                with core.learning_lock:
+                    core.auto_learning=data['enabled']
+                out={'enabled':core.auto_learning}
+            elif path == '/api/learning/ack':
+                with core.learning_lock:
+                    core.learning_state['proposals']=[]
+                    core.learning_state['status']='idle'
+                out={'acknowledged':True}
+            elif path == '/api/learning/consolidate':
+                out = {'proposals':propose_consolidation(core.conversation.history(),core.memory,core.conversation.model)}
+            elif path == '/api/learning/suggest':
                 out = {'suggestions':suggest_memories(core.conversation.history(),core.conversation.model)}
             elif path == '/api/memories':
                 out = core.memory.add(data.get('category'),data.get('fact'))
@@ -143,6 +219,7 @@ class Handler(BaseHTTPRequestHandler):
                 out = core.conversation.set_model(data.get('model'))
             elif path == '/api/chat':
                 out = core.conversation.reply(data.get('message'))
+                core.schedule_learning()
             elif path == '/api/chat/clear':
                 core.conversation.clear()
                 out = {'messages': []}
@@ -172,7 +249,7 @@ def main():
     parser.add_argument('--port',type=int,default=8765)
     args = parser.parse_args()
     server = ThreadingHTTPServer(('127.0.0.1',args.port), Handler)
-    print(f'ROBI Core v0.4.5 | http://127.0.0.1:{args.port}',flush=True)
+    print(f'ROBI Core v0.4.6 | http://127.0.0.1:{args.port}',flush=True)
     print('Premi CTRL+C per fermare il server.',flush=True)
     def warmup():
         try:
