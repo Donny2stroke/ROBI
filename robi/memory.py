@@ -30,6 +30,72 @@ class MemoryStore:
             if "note" not in cols:
                 self.db.execute("ALTER TABLE memories ADD COLUMN note TEXT NOT NULL DEFAULT ''")
             self.db.execute("CREATE TABLE IF NOT EXISTS memory_vectors (memory_id INTEGER PRIMARY KEY, fact TEXT NOT NULL, model TEXT NOT NULL, vector TEXT NOT NULL)")
+    def replace_with_history(self, memory_id, category, fact, evidence="", reason=""):
+        """Atomic, reversible memory correction. Old fact is retained in history."""
+        if type(memory_id) is not int or memory_id < 1:
+            raise ValueError("ID non valido")
+        if category not in ("identity","preference","interaction"):
+            raise ValueError("Categoria non valida")
+        if not isinstance(fact,str) or not 0 < len(fact.strip()) <= 300:
+            raise ValueError("Fatto non valido")
+        with self.lock,self.db:
+            self.db.execute("""CREATE TABLE IF NOT EXISTS memory_revisions (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                memory_id INTEGER NOT NULL,
+                old_category TEXT NOT NULL, old_fact TEXT NOT NULL,
+                new_category TEXT NOT NULL, new_fact TEXT NOT NULL,
+                evidence TEXT NOT NULL, reason TEXT NOT NULL,
+                created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP)""")
+            row=self.db.execute("SELECT category,fact FROM memories WHERE id=?",(memory_id,)).fetchone()
+            if row is None:
+                raise ValueError("Ricordo inesistente")
+            if row==(category,fact.strip()):
+                return None
+            self.db.execute("INSERT INTO memory_revisions(memory_id,old_category,old_fact,new_category,new_fact,evidence,reason) VALUES(?,?,?,?,?,?,?)",
+                            (memory_id,row[0],row[1],category,fact.strip(),evidence[:2000],reason[:500]))
+            revision=self.db.execute("SELECT last_insert_rowid()").fetchone()[0]
+            self.db.execute("UPDATE memories SET category=?,fact=?,updated_at=CURRENT_TIMESTAMP WHERE id=?",
+                            (category,fact.strip(),memory_id))
+            self.db.execute("DELETE FROM memory_vectors WHERE memory_id=?",(memory_id,))
+        return revision
+
+    def revisions(self, memory_id=None):
+        with self.lock:
+            self.db.execute("""CREATE TABLE IF NOT EXISTS memory_revisions (
+                id INTEGER PRIMARY KEY AUTOINCREMENT, memory_id INTEGER NOT NULL,
+                old_category TEXT NOT NULL, old_fact TEXT NOT NULL,
+                new_category TEXT NOT NULL, new_fact TEXT NOT NULL,
+                evidence TEXT NOT NULL, reason TEXT NOT NULL,
+                created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP)""")
+            query="SELECT * FROM memory_revisions"
+            params=()
+            if memory_id is not None:
+                query+=" WHERE memory_id=?"
+                params=(memory_id,)
+            rows=self.db.execute(query+" ORDER BY id DESC",params)
+            fields=[d[0] for d in rows.description]
+            return [dict(zip(fields,row)) for row in rows.fetchall()]
+
+    def undo_revision(self, revision_id):
+        """Undo only the latest version, preventing stale reversions."""
+        if type(revision_id) is not int or revision_id < 1:
+            raise ValueError("Revisione non valida")
+        with self.lock,self.db:
+            rows=self.revisions()
+            rev=next((r for r in rows if r["id"]==revision_id),None)
+            if rev is None:
+                raise ValueError("Revisione inesistente")
+            if next((r for r in rows if r["memory_id"]==rev["memory_id"]),None)["id"]!=revision_id:
+                raise ValueError("La revisione non e' la piu' recente")
+            row=self.db.execute("SELECT category,fact FROM memories WHERE id=?",(rev["memory_id"],)).fetchone()
+            if row!=(rev["new_category"],rev["new_fact"]):
+                raise ValueError("Il ricordo e' stato modificato successivamente")
+            self.db.execute("UPDATE memories SET category=?,fact=?,updated_at=CURRENT_TIMESTAMP WHERE id=?",
+                            (rev["old_category"],rev["old_fact"],rev["memory_id"]))
+            self.db.execute("DELETE FROM memory_vectors WHERE memory_id=?",(rev["memory_id"],))
+            self.db.execute("DELETE FROM memory_revisions WHERE id=?",(revision_id,))
+        return rev["memory_id"]
+
     def record_curator_event(self, outcome, proposal, verdict):
         """Audit: decisions and sources, never hidden weight modifications."""
         with self.lock, self.db:
