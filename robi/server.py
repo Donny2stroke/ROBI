@@ -156,6 +156,8 @@ class Handler(BaseHTTPRequestHandler):
         path = urlsplit(self.path).path
         if path == '/api/camera/stream.mjpg':
             return self.mjpeg_stream()
+        if path == '/api/memory/revisions':
+            return self.json_reply(200,{'revisions':core.memory.revisions()})
         if path == '/api/learning/events':
             return self.json_reply(200,{'events':core.memory.curator_events()})
         if path == '/api/learning/pending':
@@ -184,7 +186,7 @@ class Handler(BaseHTTPRequestHandler):
 
     def do_POST(self):
         path = urlsplit(self.path).path
-        if path not in ('/api/eyes','/api/camera/start','/api/camera/stop','/api/camera/config','/api/chat','/api/chat/clear','/api/chat/model','/api/memories','/api/memories/delete','/api/memories/clear','/api/memories/update','/api/learning/suggest','/api/learning/consolidate','/api/learning/ack','/api/learning/mode'):
+        if path not in ('/api/eyes','/api/camera/start','/api/camera/stop','/api/camera/config','/api/chat','/api/chat/clear','/api/chat/model','/api/memories','/api/memories/delete','/api/memories/clear','/api/memories/update','/api/learning/suggest','/api/learning/consolidate','/api/learning/ack','/api/learning/mode','/api/memory/revisions/undo'):
             return self.json_reply(404, {'error':'Risorsa non trovata.'})
         try:
             length = int(self.headers.get('Content-Length','0'))
@@ -198,6 +200,8 @@ class Handler(BaseHTTPRequestHandler):
                 with core.learning_lock:
                     core.auto_learning=data['enabled']
                 out={'enabled':core.auto_learning}
+            elif path == '/api/memory/revisions/undo':
+                out={'memory_id':core.memory.undo_revision(data.get('revision_id'))}
             elif path == '/api/learning/ack':
                 with core.learning_lock:
                     core.learning_state['proposals']=[]
