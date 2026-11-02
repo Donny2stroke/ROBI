@@ -71,6 +71,7 @@ def curate(proposals, memory, model="gemma3:4b",
         linked=type(related) is int and related in {m["id"] for m in existing}
         if category!=p["candidate"].get("category"):
             p={**p,"candidate":{**p["candidate"],"category":category}}
+        original_target=p.get("target_id")
         if p["action"]=="duplicate":
             outcome="rejected"
         elif relation in ("duplicate","conflict","update") and linked:
@@ -78,7 +79,7 @@ def curate(proposals, memory, model="gemma3:4b",
             if relation=="duplicate":
                 outcome="rejected"
             elif (approved and d.get("explicit_correction") is True
-                  and p["action"]=="update" and p.get("target_id")==related
+                  and p["action"]=="update" and original_target==related
                   and category==next(m["category"] for m in existing if m["id"]==related)):
                 rev=memory.replace_with_history(related,category,fact,
                     evidence=p["candidate"]["evidence"],reason=str(d.get("reason","")))
