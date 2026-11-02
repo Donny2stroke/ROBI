@@ -17,7 +17,7 @@ def candidate(fact, action="add", target_id=None, category="preference"):
 
 def decision(index, accepted=True, sensitive=False, confidence=0.99, supported=True):
     return {"index":index,"decision":"accept" if accepted else "reject",
-            "confidence":confidence,"sensitive":sensitive,"supported":supported,"reason":"Controllo fonte","relation":"independent","related_id":0,"category":"preference"}
+            "confidence":confidence,"sensitive":sensitive,"supported":supported,"reason":"Controllo fonte","relation":"independent","related_id":0,"category":"preference","explicit_correction":False}
 
 def test_curator_accepts_only_high_confidence_and_audits(tmp_path):
     m=MemoryStore(tmp_path/"memory.sqlite3")
@@ -99,4 +99,32 @@ def test_curator_does_not_repeat_same_review_on_later_round():
     second=curate([p],m,transport=lambda *_a,**_kw:(_ for _ in ()).throw(AssertionError("No repeat AI call")))
     assert second["review"]==[]
     assert len(m.curator_events())==1
+    m.close()
+
+def test_autonomous_correction_creates_reversible_revision():
+    m=MemoryStore(":memory:")
+    old=m.add("preference","Preferisco il cioccolato")
+    p=candidate("Ora preferisco il pistacchio",action="update",target_id=old["id"])
+    v=decision(0)
+    v.update({"relation":"update","related_id":old["id"],
+              "explicit_correction":True})
+    result=curate([p],m,transport=lambda *_a,**_kw:FakeResponse([v]))
+    assert len(result["accepted"])==1
+    assert m.list()[0]["fact"]=="Ora preferisco il pistacchio"
+    revisions=m.revisions(old["id"])
+    assert revisions[0]["old_fact"]=="Preferisco il cioccolato"
+    m.undo_revision(revisions[0]["id"])
+    assert m.list()[0]["fact"]=="Preferisco il cioccolato"
+    m.close()
+
+def test_new_like_does_not_override_old_preference_without_correction():
+    m=MemoryStore(":memory:")
+    old=m.add("preference","Mi piace il cioccolato")
+    p=candidate("Mi piace anche il pistacchio",action="update",target_id=old["id"])
+    v=decision(0)
+    v.update({"relation":"update","related_id":old["id"]})
+    result=curate([p],m,transport=lambda *_a,**_kw:FakeResponse([v]))
+    assert not result["accepted"]
+    assert not m.revisions()
+    assert m.list()[0]["fact"]=="Mi piace il cioccolato"
     m.close()
