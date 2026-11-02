@@ -5,14 +5,14 @@ from urllib.request import Request, urlopen
 SCHEMA={"type":"object","properties":{"decisions":{"type":"array","items":{
 "type":"object","properties":{"index":{"type":"integer"},"decision":{"type":"string"},
 "confidence":{"type":"number"},"sensitive":{"type":"boolean"},"supported":{"type":"boolean"},
-"reason":{"type":"string"},"relation":{"type":"string"},"related_id":{"type":"integer"},"category":{"type":"string"}},"required":["index","decision","confidence","sensitive","supported","reason","relation","related_id","category"],
+"reason":{"type":"string"},"relation":{"type":"string"},"related_id":{"type":"integer"},"category":{"type":"string"},"explicit_correction":{"type":"boolean"}},"required":["index","decision","confidence","sensitive","supported","reason","relation","related_id","category","explicit_correction"],
 "additionalProperties":False}}},"required":["decisions"],"additionalProperties":False}
 
 def curate(proposals, memory, model="gemma3:4b",
            endpoint="http://127.0.0.1:11434/api/chat", transport=urlopen):
     """Independent evaluation; auto-create only strongly grounded non-sensitive facts.
 
-    Updates remain suggestions until an explicit, auditable correction workflow exists.
+    Only explicit, independently checked corrections can update versioned facts.
     """
     valid=[p for p in proposals if isinstance(p,dict) and isinstance(p.get("candidate"),dict)
            and isinstance(p["candidate"].get("fact"),str) and p["candidate"]["fact"].strip()
@@ -42,6 +42,7 @@ def curate(proposals, memory, model="gemma3:4b",
             "relation: independent, duplicate, conflict o update. "
             "related_id: ID del ricordo collegato, oppure 0. "
             "Un cambiamento di preferenza va classificato come conflict o update. "
+            "explicit_correction=true solo se la fonte indica chiaramente che una condizione attuale sostituisce quella precedente; non dedurlo da un gusto aggiuntivo. "
             "category: identity per informazioni personali o professionali, "
             "preference per gusti e obiettivi, interaction per stile di dialogo. "
             "Non confondere un testo plausibile con un fatto confermato.")
@@ -73,8 +74,19 @@ def curate(proposals, memory, model="gemma3:4b",
         if p["action"]=="duplicate":
             outcome="rejected"
         elif relation in ("duplicate","conflict","update") and linked:
-            outcome="rejected" if relation=="duplicate" else "review"
             p={**p,"target_id":related,"reason":str(d.get("reason",""))[:250]}
+            if relation=="duplicate":
+                outcome="rejected"
+            elif (approved and d.get("explicit_correction") is True
+                  and p["action"]=="update" and p.get("target_id")==related
+                  and category==next(m["category"] for m in existing if m["id"]==related)):
+                rev=memory.replace_with_history(related,category,fact,
+                    evidence=p["candidate"]["evidence"],reason=str(d.get("reason","")))
+                outcome="accepted" if rev is not None else "rejected"
+                if rev is not None:
+                    p={**p,"saved_id":related,"revision_id":rev,"updated":True}
+            else:
+                outcome="review"
         elif relation!="independent":
             outcome="review"
         elif p["action"]=="update":
